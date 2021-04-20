@@ -24,7 +24,7 @@ entry main() {
     println('{}', array)
     hey.array[0]
     foo()[1]
-    //hey.array = [1,2,3,4] //DEBUG HERE
+    hey.array = [1,2,3,4] //DEBUG HERE
     hey.array.push(5)
     println('{}', hey.array)
 }
