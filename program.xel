@@ -1,0 +1,75 @@
+struct Order {
+    value: number,
+    price: number
+}
+
+struct Hey {
+    array: [][][][][][][][]number,
+    a: string,
+    values: []bool
+}
+
+const GLOBAL_RATE: number = 10
+
+entry main() {
+    let multiple = [[bar(1,1), 10], [1,2]]
+    multiple[0][1] = 11 //10, then 11
+    let array = [0, 5]
+    let yes = true
+    if yes && 1 == 1 {
+        yes = false
+    }
+
+    array[0] = 1
+    println('{}', array)
+    hey.array[0]
+    foo()[1]
+    //hey.array = [1,2,3,4] //DEBUG HERE
+    hey.array.push(5)
+    println('{}', hey.array)
+}
+
+entry foo() { // test comment
+    let a: number
+    a = 10
+    if a == 10 {
+        a = bar(5, 2)
+    } else {
+        a = 8
+    }
+
+    {
+        let b = 10
+        b *= 8
+        print(b)
+    }
+
+    print('Value: %d', a)
+}
+
+func bar(a: number, b: number): number {
+    if true {
+        return a * b * 5
+    }
+
+    return 0
+}
+
+func test(): number {
+    //let order: Order
+    //let order: Order = Order {value: 15-4, price:4*2*1*3}
+
+    let array: []number //[5, 3, 7]
+    array = []
+    array.push(8)
+    array[0] = 6
+
+    return order.price * order.value + (order.value * (10 / array[0]))
+}
+
+entry vote(id: number) {
+    total = load('vote_' + number)
+    total += 1
+
+    store('vote_' + number, total)
+}
