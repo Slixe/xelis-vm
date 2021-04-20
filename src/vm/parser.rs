@@ -228,22 +228,15 @@ impl Parser {
         };
     }
 
-    fn decrement_cursor(&self) {
-        self.cursor.set(self.cursor.get() - 1);
-    }
-
-    fn increment_cursor(&self) {
-        self.cursor.set(self.cursor.get() + 1);
-    }
-
     fn read_expression(&self) -> ParserResult<Expression> {
         let mut expr: Option<Expression> = None;
         let mut operator: Option<&Token> = None;
         let mut state: ExpressionHelper = ExpressionHelper::Left;
 
         let mut require_operator = false;
-        let mut token = next_token!(self);
+        let mut token = self.view_current()?;
         while require_operator == token.token.is_operator() || token.token == Token::BracketOpen {
+            next_token!(self);
             if require_operator {
                 match state {
                     ExpressionHelper::Operator => {
@@ -280,7 +273,7 @@ impl Parser {
                         let next = self.view_current()?;
                         match next.token {
                             Token::ParenthesisOpen => {
-                                self.increment_cursor();
+                                next_token!(self);
                                 let function_name = token.value.clone();
             
                                 let mut expressions: Vec<Expression> = vec![];
@@ -290,7 +283,7 @@ impl Parser {
                                     expressions.push(ex);
                                     token = self.view_current()?;
                                     if token.token == Token::Comma {
-                                        self.increment_cursor();
+                                        next_token!(self);
                                         token = self.view_current()?;
                                     }
                                 }
@@ -329,10 +322,9 @@ impl Parser {
             }
 
             require_operator = !require_operator;
-            token = next_token!(self);
+            token = self.view_current()?;
         }
 
-        self.decrement_cursor();
         match expr {
             Some(value) => Ok(value),
             None => Err(ParserError::UnexpectedToken(token.clone(), String::from("Unexpected token while parsing expression")))
