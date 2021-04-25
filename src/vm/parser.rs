@@ -3,26 +3,25 @@ use super::operator::*;
 use super::value_type::*;
 
 macro_rules! next_token {
-    ($self: expr) => {
-        {
-            let i = $self.cursor.get();
-            let v = $self.tokens.get(i);
-            $self.cursor.set(i + 1);
-            match v {
-                Some(value) => value,
-                None => return Err(ParserError::NoTokenFound)
-            }
+    ($self: expr) => {{
+        let i = $self.cursor.get();
+        let v = $self.tokens.get(i);
+        $self.cursor.set(i + 1);
+        match v {
+            Some(value) => value,
+            None => return Err(ParserError::NoTokenFound),
         }
-    };
-    ($self: expr, $token: ident) => {
-        {
-            let v = next_token!($self);
-            if (v.token != Token::$token) {
-                return Err(ParserError::UnexpectedToken(v.clone(), String::from(stringify!($token))));
-            }
-            v
+    }};
+    ($self: expr, $token: ident) => {{
+        let v = next_token!($self);
+        if (v.token != Token::$token) {
+            return Err(ParserError::UnexpectedToken(
+                v.clone(),
+                String::from(stringify!($token)),
+            ));
         }
-    }
+        v
+    }};
 }
 
 #[derive(Debug)]
@@ -33,42 +32,42 @@ pub enum Expression {
     FunctionCall(String, Vec<Expression>),
     ArrayCall(Box<Expression>, Box<Expression>),
     ArrayConstructor(Vec<Expression>),
-    SubExpression(Box<Expression>)
+    SubExpression(Box<Expression>),
 }
 
 #[derive(Debug)]
 pub enum ExpressionHelper {
     Left,
     Operator,
-    Right
+    Right,
 }
 
 #[derive(Debug)]
 pub struct IfStatement {
     pub condition: Expression,
-    pub body: Vec<Statement>
+    pub body: Vec<Statement>,
 }
 
 #[derive(Debug)]
 pub struct ElseStatement {
-    pub body: Vec<Statement>
+    pub body: Vec<Statement>,
 }
 
 #[derive(Debug)]
 pub struct WhileStatement {
     pub condition: Expression,
-    pub body: Vec<Statement>
+    pub body: Vec<Statement>,
 }
 
 #[derive(Debug)]
 pub struct ForStatement {
     pub condition: Expression,
-    pub body: Vec<Statement>
+    pub body: Vec<Statement>,
 }
 
 #[derive(Debug)]
 pub struct ScopeStatement {
-    pub body: Vec<Statement>
+    pub body: Vec<Statement>,
 }
 
 #[derive(Debug)]
@@ -166,18 +165,16 @@ impl Parser {
                     let entry = first.token == Token::Entry;
                     let function = self.read_function(entry)?;
                     self.functions.push(function);
-                },
+                }
                 Token::Struct => {
                     let identifier = next_token!(self, Identifier);
                     next_token!(self, BraceOpen);
                     let parameters: Vec<Parameter> = self.read_parameters()?;
-                    self.structures.push(
-                        Structure {
-                            name: identifier.value.clone(),
-                            parameters: parameters
-                        }
-                    );
-                },
+                    self.structures.push(Structure {
+                        name: identifier.value.clone(),
+                        parameters: parameters,
+                    });
+                }
                 Token::Const => {
                     let name = next_token!(self, Identifier);
                     let value_type: Type;
@@ -188,25 +185,33 @@ impl Parser {
                         value_type = self.get_type()?;
                         next = next_token!(self);
                     } else {
-                        return Err(ParserError::UnexpectedToken(next.clone(), String::from("Value Type is required for constant")))
+                        return Err(ParserError::UnexpectedToken(
+                            next.clone(),
+                            String::from("Value Type is required for constant"),
+                        ));
                     }
 
                     if next.token == Token::OperatorAssign {
                         value = self.read_expression()?;
-                    }
-                    else {
-                        return Err(ParserError::UnexpectedToken(next.clone(), String::from("Constant require a value")));
+                    } else {
+                        return Err(ParserError::UnexpectedToken(
+                            next.clone(),
+                            String::from("Constant require a value"),
+                        ));
                     }
 
-                    self.constants.push(
-                        Constant {
-                            name: name.value.clone(),
-                            value_type: value_type,
-                            value: value,
-                        }
-                    );
-                },
-                _ => return Err(ParserError::UnexpectedToken(first.clone(), String::from("What should we do with that ?")))
+                    self.constants.push(Constant {
+                        name: name.value.clone(),
+                        value_type: value_type,
+                        value: value,
+                    });
+                }
+                _ => {
+                    return Err(ParserError::UnexpectedToken(
+                        first.clone(),
+                        String::from("What should we do with that ?"),
+                    ))
+                }
             }
         }
 
@@ -224,7 +229,7 @@ impl Parser {
     fn view_current(&self) -> ParserResult<&TokenValue> {
         return match self.tokens.get(self.cursor.get()) {
             Some(value) => Ok(value),
-            None => return Err(ParserError::NoTokenFound)
+            None => return Err(ParserError::NoTokenFound),
         };
     }
 
@@ -245,14 +250,20 @@ impl Parser {
                             next_token!(self, BracketClose);
 
                             require_operator = !require_operator;
-                            expr = Some(Expression::ArrayCall(Box::new(expr.take().expect("Expected identifier call")), Box::new(ex)));
+                            expr = Some(Expression::ArrayCall(
+                                Box::new(expr.take().expect("Expected identifier call")),
+                                Box::new(ex),
+                            ));
                         } else {
                             state = ExpressionHelper::Right;
                             operator = Some(&token.token);
                         }
-                    },
+                    }
                     _ => {
-                        return Err(ParserError::UnexpectedToken(token.clone(), String::from("State is not operator!")))
+                        return Err(ParserError::UnexpectedToken(
+                            token.clone(),
+                            String::from("State is not operator!"),
+                        ))
                     }
                 }
             } else {
@@ -261,11 +272,16 @@ impl Parser {
                     Token::ValNumber => {
                         let value: usize = match token.value.parse() {
                             Ok(value) => value,
-                            Err(_) => return Err(ParserError::UnexpectedToken(token.clone(), String::from("Error while parsing number")))
+                            Err(_) => {
+                                return Err(ParserError::UnexpectedToken(
+                                    token.clone(),
+                                    String::from("Error while parsing number"),
+                                ))
+                            }
                         };
-        
+
                         Expression::Value(Literal::Number(value))
-                    },
+                    }
                     Token::Null => Expression::Value(Literal::Null),
                     Token::True => Expression::Value(Literal::Boolean(true)),
                     Token::False => Expression::Value(Literal::Boolean(false)),
@@ -275,7 +291,7 @@ impl Parser {
                             Token::ParenthesisOpen => {
                                 next_token!(self);
                                 let function_name = token.value.clone();
-            
+
                                 let mut expressions: Vec<Expression> = vec![];
                                 token = self.view_current()?;
                                 while token.token != Token::ParenthesisClose {
@@ -287,35 +303,48 @@ impl Parser {
                                         token = self.view_current()?;
                                     }
                                 }
-            
+
                                 next_token!(self, ParenthesisClose);
                                 Expression::FunctionCall(function_name, expressions)
-                            },
-                            _ => Expression::Variable(token.value.clone())
+                            }
+                            _ => Expression::Variable(token.value.clone()),
                         }
-                    },
+                    }
                     Token::ParenthesisOpen => {
-                        let part: Expression = Expression::SubExpression(Box::new(self.read_expression()?));
+                        let part: Expression =
+                            Expression::SubExpression(Box::new(self.read_expression()?));
                         next_token!(self, ParenthesisClose);
                         part
-                    },
+                    }
                     Token::BracketOpen => self.read_array_values()?,
-                    _ => break
+                    _ => break,
                 };
 
                 match state {
-                    ExpressionHelper::Left => { //only used the first time
+                    ExpressionHelper::Left => {
+                        //only used the first time
                         state = ExpressionHelper::Operator;
                         expr = Some(expression);
-                    },
-                    ExpressionHelper::Operator => return Err(ParserError::InvalidExpression(String::from("How is it possible ? Operator!"))),
+                    }
+                    ExpressionHelper::Operator => {
+                        return Err(ParserError::InvalidExpression(String::from(
+                            "How is it possible ? Operator!",
+                        )))
+                    }
                     ExpressionHelper::Right => {
                         state = ExpressionHelper::Operator;
                         if let Some(value) = operator {
-                            let op = Operator::value_of(value, Box::new(expr.take().expect("Expecting a left expression")), Box::new(expression)).expect("No Operator found");
+                            let op = Operator::value_of(
+                                value,
+                                Box::new(expr.take().expect("Expecting a left expression")),
+                                Box::new(expression),
+                            )
+                            .expect("No Operator found");
                             expr = Some(Expression::Operator(op));
                         } else {
-                            return Err(ParserError::InvalidExpression(String::from("How is it possible ? No operator found!")))
+                            return Err(ParserError::InvalidExpression(String::from(
+                                "How is it possible ? No operator found!",
+                            )));
                         }
                     }
                 }
@@ -327,7 +356,10 @@ impl Parser {
 
         match expr {
             Some(value) => Ok(value),
-            None => Err(ParserError::UnexpectedToken(token.clone(), String::from("Unexpected token while parsing expression")))
+            None => Err(ParserError::UnexpectedToken(
+                token.clone(),
+                String::from("Unexpected token while parsing expression"),
+            )),
         }
     }
 
@@ -344,11 +376,13 @@ impl Parser {
                 Ok(val) => Some(val),
                 Err(_) => None,
             };
-
         } else if current.token == Token::BraceOpen {
             opt_ret_value = None;
         } else {
-            return Err(ParserError::UnexpectedToken(current.clone(), String::from("Error while parsing function returned value")));
+            return Err(ParserError::UnexpectedToken(
+                current.clone(),
+                String::from("Error while parsing function returned value"),
+            ));
         }
 
         let statements: Vec<Statement> = self.read_body()?;
@@ -358,7 +392,7 @@ impl Parser {
             parameters: parameters,
             statements: statements,
             ret_value: opt_ret_value,
-            entry: entry
+            entry: entry,
         })
     }
 
@@ -389,7 +423,7 @@ impl Parser {
             Token::BraceOpen => self.read_statement_scope()?,
             Token::Return => self.read_statement_return()?,
             Token::Let => self.read_statement_let()?,
-            _ => Statement::Expression(self.read_expression()?)
+            _ => Statement::Expression(self.read_expression()?),
         };
 
         Ok(res)
@@ -402,7 +436,7 @@ impl Parser {
 
         Ok(Statement::For(ForStatement {
             condition: condition,
-            body: statements
+            body: statements,
         }))
     }
 
@@ -413,7 +447,7 @@ impl Parser {
 
         Ok(Statement::While(WhileStatement {
             condition: condition,
-            body: statements
+            body: statements,
         }))
     }
 
@@ -424,7 +458,7 @@ impl Parser {
 
         Ok(Statement::If(IfStatement {
             condition: condition,
-            body: statements
+            body: statements,
         }))
     }
 
@@ -432,20 +466,17 @@ impl Parser {
         next_token!(self, Else);
         let statements = self.read_body()?;
 
-        Ok(Statement::Else(ElseStatement {
-            body: statements
-        }))
+        Ok(Statement::Else(ElseStatement { body: statements }))
     }
 
     fn read_statement_scope(&self) -> ParserResult<Statement> {
         let statements = self.read_body()?;
 
-        Ok(Statement::Scope(ScopeStatement {
-            body: statements
-        }))
+        Ok(Statement::Scope(ScopeStatement { body: statements }))
     }
 
-    fn read_statement_return(&self) -> ParserResult<Statement> { //TODO verify optional expression
+    fn read_statement_return(&self) -> ParserResult<Statement> {
+        //TODO verify optional expression
         next_token!(self, Return);
         let expression = match self.read_expression() {
             Ok(value) => Some(value),
@@ -480,8 +511,9 @@ impl Parser {
             _value = None;
         }
 
-        if _value.is_none() && var_type.is_none() { //if we don't have a value or a type, then we don't accept it.
-            return Err(ParserError::NoTypeOrValueFound(token.clone()))
+        if _value.is_none() && var_type.is_none() {
+            //if we don't have a value or a type, then we don't accept it.
+            return Err(ParserError::NoTypeOrValueFound(token.clone()));
         }
 
         Ok(Statement::Variable(DeclarationStatement {
@@ -498,12 +530,10 @@ impl Parser {
             let name = current;
             next_token!(self, Colon);
 
-            parameters.push(
-                Parameter {
-                    name: name.value.clone(),
-                    value_type: self.get_type()?,
-                }
-            );
+            parameters.push(Parameter {
+                name: name.value.clone(),
+                value_type: self.get_type()?,
+            });
 
             current = next_token!(self);
             if current.token == Token::Comma {
@@ -543,12 +573,17 @@ impl Parser {
             next_token!(self, BracketClose);
             _type = match self.get_type() {
                 Ok(v) => Ok(Type::Array(Box::new(v))),
-                Err(v) => Err(v)
+                Err(v) => Err(v),
             };
         } else {
             _type = match Type::get_type(&self.structures, current) {
                 Some(value) => Ok(value),
-                None => return Err(ParserError::UnexpectedToken(current.clone(), String::from("Expected a valid type")))
+                None => {
+                    return Err(ParserError::UnexpectedToken(
+                        current.clone(),
+                        String::from("Expected a valid type"),
+                    ))
+                }
             }
         }
 

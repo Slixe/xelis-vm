@@ -1,6 +1,4 @@
-#[derive(Debug)]
-#[derive(PartialEq)]
-#[derive(Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     Identifier,
     ValNumber,
@@ -62,7 +60,6 @@ pub enum Token {
 }
 
 impl Token {
-
     fn value_of_characters(characters: &Vec<char>) -> Option<Token> {
         let value: String = characters.into_iter().collect();
         return Token::value_of(value);
@@ -135,19 +132,33 @@ impl Token {
     pub fn is_operator(&self) -> bool {
         use Token::*;
         match self {
-            OperatorAssign | OperatorEquals | OperatorNotEquals
-            | OperatorAnd | OperatorOr | OperatorGreaterThan | OperatorLessThan
-            | OperatorGreaterOrEqual | OperatorLessOrEqual | OperatorPlus | OperatorMinus
-            | OperatorMultiply | OperatorDivide | OperatorModulo | OperatorPlusAssign
-            | OperatorMinusAssign | OperatorMultiplyAssign | OperatorDivideAssign
-            | OperatorBitwiseLeft | OperatorBitwiseRight | Dot => true,
+            OperatorAssign
+            | OperatorEquals
+            | OperatorNotEquals
+            | OperatorAnd
+            | OperatorOr
+            | OperatorGreaterThan
+            | OperatorLessThan
+            | OperatorGreaterOrEqual
+            | OperatorLessOrEqual
+            | OperatorPlus
+            | OperatorMinus
+            | OperatorMultiply
+            | OperatorDivide
+            | OperatorModulo
+            | OperatorPlusAssign
+            | OperatorMinusAssign
+            | OperatorMultiplyAssign
+            | OperatorDivideAssign
+            | OperatorBitwiseLeft
+            | OperatorBitwiseRight
+            | Dot => true,
             _ => false,
         }
     }
 }
 
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct TokenValue {
     pub line: usize,
     pub column: usize,
@@ -155,7 +166,8 @@ pub struct TokenValue {
     pub value: String,
 }
 
-pub struct Lexer { //line & column are used for syntax error
+pub struct Lexer {
+    //line & column are used for syntax error
     content: Vec<char>,
     line: usize,
     column: usize,
@@ -164,7 +176,6 @@ pub struct Lexer { //line & column are used for syntax error
 }
 
 impl Lexer {
-
     pub fn new(content: String) -> Lexer {
         return Lexer {
             content: content.chars().collect(),
@@ -204,10 +215,11 @@ impl Lexer {
     }
 
     fn has_next(&self) -> bool {
-        return self.cursor + 1 < self.content.len() && match self.next() {
-            Some(value) => value != ' ',
-            None => false,
-        };
+        return self.cursor + 1 < self.content.len()
+            && match self.next() {
+                Some(value) => value != ' ',
+                None => false,
+            };
     }
 
     fn _cursor_plus(&mut self, n: usize) {
@@ -237,21 +249,22 @@ impl Lexer {
             }
 
             return None;
-        }
-        else if first.is_numeric() {
-            let value = self.read_while(|c: char| -> bool {
-                return c.is_numeric() || c == '_';
-            }).iter().collect();
+        } else if first.is_numeric() {
+            let value = self
+                .read_while(|c: char| -> bool {
+                    return c.is_numeric() || c == '_';
+                })
+                .iter()
+                .collect();
             self._cursor_minus(1);
 
             return Some(TokenValue {
                 line: self.line,
                 column: self.column,
                 token: Token::ValNumber,
-                value: value
-            })
-        }
-        else if first == '"' || first == '\'' {
+                value: value,
+            });
+        } else if first == '"' || first == '\'' {
             self.cursor_plus();
             let value = self.read_until(first);
             return Some(TokenValue {
@@ -260,8 +273,7 @@ impl Lexer {
                 token: Token::ValString,
                 value: value.iter().collect(),
             });
-        }
-        else if first.is_alphabetic() {
+        } else if first.is_alphabetic() {
             let value = self.read_word();
             return Some(TokenValue {
                 line: self.line,
@@ -272,18 +284,16 @@ impl Lexer {
                 },
                 value: value.iter().collect(),
             });
-        }
-        else if self.has_next() {
+        } else if self.has_next() {
             let chars: Vec<char> = vec![first, self.next()?]; //should not return
             if let Some(value) = Token::value_of_characters(&chars) {
                 self._cursor_plus(2);
                 if value == Token::CommentDoubleSlashes {
-                    /*chars = */self.read_while(|character: char| -> bool {
-                        character != '\n'
-                    });
+                    /*chars = */
+                    self.read_while(|character: char| -> bool { character != '\n' });
                     return None; //we don't save comments yet
                 }
-                /*else if value == Token::CommentMultiline { // TODO 
+                /*else if value == Token::CommentMultiline { // TODO
                     self.read_while(|character: char | -> bool {
                         character != '*' && self.next()? != '/'
                     });
@@ -302,13 +312,13 @@ impl Lexer {
             Some(value) => {
                 self.cursor_plus();
                 value
-            },
+            }
             None => {
                 value = self.read_until(' ');
                 Token::value_of_characters(&value)?
-            },
+            }
         };
-        
+
         return Some(TokenValue {
             line: self.line,
             column: self.column,
@@ -317,7 +327,10 @@ impl Lexer {
         });
     }
 
-    fn read_while<F>(&mut self, condition: F) -> Vec<char> where F: Fn(char) -> bool {
+    fn read_while<F>(&mut self, condition: F) -> Vec<char>
+    where
+        F: Fn(char) -> bool,
+    {
         let mut value: Vec<char> = vec![];
 
         let mut current = match self.current() {
@@ -335,7 +348,7 @@ impl Lexer {
             };
         }
 
-        return value
+        return value;
     }
 
     fn read_until(&mut self, delimiter: char) -> Vec<char> {

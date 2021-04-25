@@ -29,7 +29,11 @@ pub enum Operator {
 
 use Operator::*;
 impl Operator {
-    pub fn value_of(token: &Token, left: Box<Expression>, right: Box<Expression>) -> Option<Operator> {
+    pub fn value_of(
+        token: &Token,
+        left: Box<Expression>,
+        right: Box<Expression>,
+    ) -> Option<Operator> {
         let value = match token {
             Token::OperatorAssign => OperatorAssign(left, right),
             Token::OperatorEquals => OperatorEquals(left, right),
@@ -39,7 +43,7 @@ impl Operator {
             Token::OperatorGreaterThan => OperatorGreaterThan(left, right),
             Token::OperatorLessThan => OperatorLessThan(left, right),
             Token::OperatorGreaterOrEqual => OperatorGreaterOrEqual(left, right),
-            Token::OperatorLessOrEqual  => OperatorLessOrEqual(left, right),
+            Token::OperatorLessOrEqual => OperatorLessOrEqual(left, right),
             Token::OperatorPlus => OperatorPlus(left, right),
             Token::OperatorMinus => OperatorMinus(left, right),
             Token::OperatorMultiply => OperatorMultiply(left, right),
@@ -53,7 +57,7 @@ impl Operator {
             Token::OperatorBitwiseRight => OperatorBitwiseRight(left, right),
             Token::Dot => Dot(left, right),
 
-            _ => return None
+            _ => return None,
         };
 
         Some(value)
