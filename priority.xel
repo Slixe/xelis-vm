@@ -1,0 +1,5 @@
+entry main() {
+    let a = [1+1, 2+2] // ok
+    a[0] = 1 // todo
+    return a[1] //ok
+}

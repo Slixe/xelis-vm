@@ -47,7 +47,7 @@ entry foo() { // test comment
     print('Value: %d', a)
 }
 
-entry bar(a: number, b: number): number {
+func bar(a: number, b: number): number {
     if true {
         return a * b * 5
     }

@@ -9,7 +9,7 @@ pub enum Literal {
     Boolean(bool),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Type {
     String,
     Number,
