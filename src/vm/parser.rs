@@ -86,7 +86,7 @@ pub struct AssignStatement {
 #[derive(Debug)]
 pub enum VariableAssign {
     Variable(String),
-    Array(Box<VariableAssign>, Box<Expression>),
+    Array(Box<VariableAssign>, Expression),
     //SubVariable(Box<VariableAssign>, Box<VariableAssign>) TODO using dot operator
 }
 
@@ -313,12 +313,9 @@ impl Parser {
                                     next_token!(self);
                                     let ex = self.read_expression()?;
                                     next_token!(self, BracketClose);
-        
+
                                     require_operator = !require_operator;
-                                    expr = Expression::ArrayCall(
-                                        Box::new(expr),
-                                        Box::new(ex),
-                                    );
+                                    expr = Expression::ArrayCall(Box::new(expr), Box::new(ex));
                                 }
                                 expr
                             }
@@ -331,7 +328,7 @@ impl Parser {
                                     Box::new(Expression::Variable(token.value.clone())),
                                     Box::new(ex),
                                 )
-                            },
+                            }
                             _ => Expression::Variable(token.value.clone()),
                         }
                     }
@@ -553,11 +550,15 @@ impl Parser {
         next_token!(self, OperatorAssign);
         let last_statement = statements.remove(statements.len() - 1);
         let variable = match last_statement {
-            Statement::Expression(exp) => self.get_path_for_variable(exp)?,/*match exp {
-                Expression::Variable(var) => var,
-                _ => return Err(ParserError::InvalidExpression(format!("Expected a variable before assignation: {:?}", exp)))
+            Statement::Expression(exp) => self.get_path_for_variable(exp)?, /*match exp {
+            Expression::Variable(var) => var,
+            _ => return Err(ParserError::InvalidExpression(format!("Expected a variable before assignation: {:?}", exp)))
             },*/
-            _ => return Err(ParserError::InvalidExpression("Unexpected statement before assignation!".to_string()))
+            _ => {
+                return Err(ParserError::InvalidExpression(
+                    "Unexpected statement before assignation!".to_string(),
+                ))
+            }
         };
 
         let expression = self.read_expression()?;
@@ -571,8 +572,14 @@ impl Parser {
     fn get_path_for_variable(&self, expression: Expression) -> ParserResult<VariableAssign> {
         let res = match expression {
             Expression::Variable(v) => VariableAssign::Variable(v),
-            Expression::ArrayCall(val, index) => VariableAssign::Array(Box::new(self.get_path_for_variable(*val)?), index),
-            _ => return Err(ParserError::InvalidExpression("Expected a variable/array call".to_string()))
+            Expression::ArrayCall(val, index) => {
+                VariableAssign::Array(Box::new(self.get_path_for_variable(*val)?), *index)
+            }
+            _ => {
+                return Err(ParserError::InvalidExpression(
+                    "Expected a variable/array call".to_string(),
+                ))
+            }
         };
 
         Ok(res)

@@ -4,9 +4,17 @@ entry main() {
 
     let b = test(a[1] * a[0] + 10)
     
-    return b
+    return fibonacci(10)
 }
 
 func test(a: number): number {
     return a * 15
+}
+
+func fibonacci(n: number): number {
+    if n <= 1 {
+        return n
+    }
+
+    return fibonacci(n - 1) + fibonacci(n - 2)
 }
