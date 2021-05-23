@@ -3,7 +3,7 @@ use super::parser::Expression;
 
 #[derive(Debug)]
 pub enum Operator {
-    OperatorAssign(Box<Expression>, Box<Expression>),
+    //OperatorAssign(Box<Expression>, Box<Expression>),
     OperatorEquals(Box<Expression>, Box<Expression>),
     OperatorNotEquals(Box<Expression>, Box<Expression>),
     OperatorAnd(Box<Expression>, Box<Expression>),
@@ -17,10 +17,10 @@ pub enum Operator {
     OperatorMultiply(Box<Expression>, Box<Expression>),
     OperatorDivide(Box<Expression>, Box<Expression>),
     OperatorModulo(Box<Expression>, Box<Expression>),
-    OperatorPlusAssign(Box<Expression>, Box<Expression>),
+    /*OperatorPlusAssign(Box<Expression>, Box<Expression>),
     OperatorMinusAssign(Box<Expression>, Box<Expression>),
     OperatorMultiplyAssign(Box<Expression>, Box<Expression>),
-    OperatorDivideAssign(Box<Expression>, Box<Expression>),
+    OperatorDivideAssign(Box<Expression>, Box<Expression>),*/
     OperatorBitwiseLeft(Box<Expression>, Box<Expression>),
     OperatorBitwiseRight(Box<Expression>, Box<Expression>),
 
@@ -35,7 +35,7 @@ impl Operator {
         right: Box<Expression>,
     ) -> Option<Operator> {
         let value = match token {
-            Token::OperatorAssign => OperatorAssign(left, right),
+            //Token::OperatorAssign => OperatorAssign(left, right),
             Token::OperatorEquals => OperatorEquals(left, right),
             Token::OperatorNotEquals => OperatorNotEquals(left, right),
             Token::OperatorAnd => OperatorAnd(left, right),
@@ -49,10 +49,10 @@ impl Operator {
             Token::OperatorMultiply => OperatorMultiply(left, right),
             Token::OperatorDivide => OperatorDivide(left, right),
             Token::OperatorModulo => OperatorModulo(left, right),
-            Token::OperatorPlusAssign => OperatorPlusAssign(left, right),
+           /* Token::OperatorPlusAssign => OperatorPlusAssign(left, right),
             Token::OperatorMinusAssign => OperatorMinusAssign(left, right),
             Token::OperatorMultiplyAssign => OperatorMultiplyAssign(left, right),
-            Token::OperatorDivideAssign => OperatorDivideAssign(left, right),
+            Token::OperatorDivideAssign => OperatorDivideAssign(left, right),*/
             Token::OperatorBitwiseLeft => OperatorBitwiseLeft(left, right),
             Token::OperatorBitwiseRight => OperatorBitwiseRight(left, right),
             Token::Dot => Dot(left, right),

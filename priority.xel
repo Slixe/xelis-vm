@@ -1,5 +1,12 @@
 entry main() {
-    let a = [1+1, 2+2] // ok
-    a[0] = 1 // todo
-    return a[1] //ok
+    let a = [1+1, 2+2]
+    a[0] = 1
+
+    let b = test(a[1] * a[0] + 10)
+    
+    return b
+}
+
+func test(a: number): number {
+    return a * 15
 }

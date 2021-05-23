@@ -12,10 +12,9 @@ pub struct Interpreter { //TODO HashMap<String, Structure>
 pub enum Value {
     Array(Vec<Value>),
     Literal(Literal),
-    Structure(String, HashMap<String, Value>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Variable {
     pub value: Value,
     pub value_type: Type,
@@ -31,6 +30,10 @@ impl Scope {
         Scope {
             variables: HashMap::new(),
         }
+    }
+
+    pub fn get_mut_variable(&mut self, name: &str) -> Option<&mut Variable> {
+        self.variables.get_mut(name)
     }
 
     pub fn get_variable(&self, name: &str) -> Option<&Variable> {
@@ -70,8 +73,7 @@ impl Interpreter {
             panic!(format!("Function '{}' is not an entrypoint!", entry));
         }
 
-        let scope = Scope::new();
-        self.execute_function(func, parameters, scope)
+        self.execute_function(func, parameters)
     }
 
     fn get_function(&self, entry: &String) -> Option<&Function> {
@@ -87,32 +89,39 @@ impl Interpreter {
         &self,
         name: &String,
         parameters: &Vec<Expression>,
+        scope: &Scope,
     ) -> Option<Value> {
         let mut values: Vec<Literal> = vec![];
-        let mut scope = Scope::new();
 
         let func = self.get_function(name)?;
-
         for e in parameters {
-            values.push(self.execute_expression_and_expect_literal(&e, &mut scope)?);
+            values.push(self.execute_expression_and_expect_literal(&e, scope)?);
         }
 
-        self.execute_function(&func, values, scope)
+        self.execute_function(&func, values)
     }
 
     fn execute_function(
         &self,
         func: &Function,
-        parameters: Vec<Literal>,
-        mut scope: Scope,
+        values: Vec<Literal>,
     ) -> Option<Value> {
-        if parameters.len() != func.parameters.len() {
+        if values.len() != func.parameters.len() {
             panic!("Parameters / values length mismatch");
         }
 
+        let mut scope = Scope::new();
         let mut i = 0;
-        for param in parameters {
-            scope.set_variable_value(&func.parameters[i].name, Value::Literal(param));
+        for value in values {
+            let param = &func.parameters[i];
+            let val = Value::Literal(value.clone());
+            if value != Literal::Null && self.get_type_of_value(&val) != param.value_type {
+                panic!("Invalid value type for parameter {} expected {:?} found {:?}!", param.name, param.value_type, value);
+            }
+            scope.register_variable(&param.name, Variable {
+                value_type: param.value_type.clone(),
+                value: val
+            });
             i += 1;
         }
 
@@ -131,7 +140,7 @@ impl Interpreter {
     fn execute_statement(&self, statement: &Statement, scope: &mut Scope) -> Option<Value> {
         match statement {
             Statement::Expression(exp) => {
-                self.execute_expression(&exp, scope);
+                self.execute_expression(&exp, scope)
             }
             Statement::If(value) => {
                 if let Some(result) = self.execute_expression(&value.condition, scope) {
@@ -147,56 +156,93 @@ impl Interpreter {
                         return self.execute_statements(&value.body, scope); //TODO copy scope into a new one
                     }
                 }
+
+                None
             }
             Statement::Variable(var) => {
-                let value: Value;
-                let value_type: Type;
+                let mut value: Option<Value> = None;
+                let mut value_type: Option<Type> = None;
 
                 if let Some(result) = &var.value {
-                    value = self.execute_expression(result, scope)?;
-                } else {
-                    if let Some(result) = &var.value_type {
-                        value = match result {
+                    value = self.execute_expression(result, scope);
+                }
+
+                if let Some(result) = &var.value_type {
+                    value_type = var.value_type.clone();
+
+                    if value.is_none() {
+                        value = Some(match result {
                             Type::Number => Value::Literal(Literal::Number(0)),
                             _ => Value::Literal(Literal::Null)
-                        };
-                    }
-                    else {
-                        panic!("Expected an expression or a type");
+                        });
                     }
                 }
 
-                value_type = match &value {
-                    Value::Literal(l) => match l {
-                        Literal::Null => {
-                            if let Some(value) = &var.value_type {
-                                value.clone()
-                            } else {
-                                panic!("Expected a not-null value or a type");
-                            }
-                        }
-                        Literal::Boolean(_) => Type::Boolean,
-                        Literal::Number(_) => Type::Number,
-                        Literal::String(_) => Type::String
+                if value_type.is_none() {
+                    if let Some(v) = &value {
+                        println!("variable {} with value {:?}", var.name, v);
+                        value_type = Some(self.get_type_of_value(&v));
                     }
-                    Value::Array(_) => Type::Array(Box::new(Type::Number)), //TODO type
-                    Value::Structure(name, _) => Type::Struct(name.clone()), //TODO better structure
-                };
+                }
 
                 scope.register_variable(&var.name, Variable {
-                    value: value,
-                    value_type
+                    value: value.unwrap(),
+                    value_type: value_type.unwrap()
                 });
+
+                None
             }
             Statement::Return(value) => {
                 match value {
-                    Some(value) => return Some(self.execute_expression(value, scope)?),
-                    None => return None,
+                    Some(value) => self.execute_expression(value, scope),
+                    None => None,
+                }
+            }
+            Statement::Assign(value) => self.assign_value(&value.variable, &value.expression, scope),
+            _ => {
+                panic!(format!("Statement not implemented: {:?}", statement));
+            }
+        }
+    }
+
+    fn get_type_of_value(&self, value: &Value) -> Type {
+        match &value {
+            Value::Literal(l) => match l {
+                Literal::Null => {
+                    panic!("Expected a not-null value or a type");
+                }
+                Literal::Boolean(_) => Type::Boolean,
+                Literal::Number(_) => Type::Number,
+                Literal::String(_) => Type::String
+            }
+            Value::Array(_) => Type::Array(Box::new(Type::Number)), //TODO type
+        }
+    }
+    fn assign_value(&self, var: &VariableAssign, value: &Expression, scope: &mut Scope) -> Option<Value> {
+        match var {
+            VariableAssign::Variable(v) => {
+                let val = self.execute_expression(value, scope)?;
+                scope.set_variable_value(v, val);
+            }
+            VariableAssign::Array(v, index) => {
+                let i = match self.execute_expression_and_expect_literal(index, scope)? {
+                    Literal::Number(val) => val,
+                    _ => panic!("Invalid index")
+                };
+                let val = self.execute_expression(value, scope)?;
+                match &**v {
+                    VariableAssign::Variable(v) => {
+                        match scope.get_mut_variable(&v).unwrap().value {
+                            Value::Array(ref mut values) => {
+                                drop(std::mem::replace(&mut values[i], val))
+                            },
+                            _ => panic!("wtf bro")
+                        };
+                    }
+                    _ => panic!("no variable")
                 };
             }
-            _ => {
-                panic!(format!("How is it possible?\n {:?}", statement));
-            }
+            _ => {}
         };
 
         None
@@ -206,7 +252,7 @@ impl Interpreter {
         &self,
         left: &Expression,
         right: &Expression,
-        scope: &mut Scope,
+        scope: &Scope,
     ) -> Option<(usize, usize)> {
         if let (Literal::Number(left_val), Literal::Number(right_val)) = (
             self.execute_expression_and_expect_literal(left, scope)?,
@@ -222,7 +268,7 @@ impl Interpreter {
         &self,
         left: &Expression,
         right: &Expression,
-        scope: &mut Scope,
+        scope: &Scope,
     ) -> Option<(bool, bool)> {
         if let (Literal::Boolean(left_val), Literal::Boolean(right_val)) = (
             self.execute_expression_and_expect_literal(left, scope)?,
@@ -234,14 +280,14 @@ impl Interpreter {
         }
     }
 
-    fn execute_expression_and_expect_literal(&self, expr: &Expression, scope: &mut Scope) -> Option<Literal> {
+    fn execute_expression_and_expect_literal(&self, expr: &Expression, scope: &Scope) -> Option<Literal> {
         match self.execute_expression(expr, scope)? {
             Value::Literal(v) => Some(v),
             _ => panic!("Only literal are allowed!")
         }
     }
 
-    fn execute_expression(&self, expr: &Expression, scope: &mut Scope) -> Option<Value> {
+    fn execute_expression(&self, expr: &Expression, scope: &Scope) -> Option<Value> {
         match expr {
             Expression::Value(val) => Some(Value::Literal(val.clone())),
             Expression::Variable(val) => match scope.get_variable(val) {
@@ -276,32 +322,25 @@ impl Interpreter {
                 Some(Value::Array(values))
             }
             Expression::FunctionCall(func_name, params) => {
-                self.execute_function_and_params(func_name, params)
+                self.execute_function_and_params(func_name, params, scope)
             }
             Expression::Operator(operator) => match operator {
                 Operator::Dot(left, right) => {
                     match self.execute_expression(left, scope)? {
-                        Value::Structure(_, fields) => fields.get(match self.execute_expression_and_expect_literal(right, scope)? {
-                            Literal::String(ref s) => s,
-                            _ => panic!("Expected a field name")
-                        }),
                         _ => panic!("not a structure, where are you trying to use dot operator ?")
                     };
-
-                    None
                 },
-                Operator::OperatorAssign(left, right) => {
-                    let variable = self.execute_expression(left, scope)?;
-                    let right_val = self.execute_expression(right, scope)?;
-
-                    println!("assign old value: {:?} to {:?}", variable, right_val);
-
-                    None
+                /*Operator::OperatorAssign(left, right) => {
+                    let value = self.execute_expression(right, scope)?;
+                    self.update_value_of(left, value, scope)
                 },
-                Operator::OperatorPlusAssign(left, right) => None,
+                Operator::OperatorPlusAssign(left, right) => {
+                    let value = self.execute_expression(right, scope)?;
+                    self.update_value_of(left, value, scope)
+                },
                 Operator::OperatorMinusAssign(left, right) => None,
                 Operator::OperatorDivideAssign(left, right) => None,
-                Operator::OperatorMultiplyAssign(left, right) => None,
+                Operator::OperatorMultiplyAssign(left, right) => None,*/
                 Operator::OperatorAnd(left, right) => {
                     if let Some((left, right)) = self.get_booleans(left, right, scope) {
                         Some(Value::Literal(Literal::Boolean(left && right)))
@@ -430,9 +469,5 @@ impl Interpreter {
             },
             Expression::SubExpression(sub) => self.execute_expression(sub, scope),
         }
-    }
-
-    fn unbox<T>(&self, value: Box<T>) -> T {
-        *value
     }
 }

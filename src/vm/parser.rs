@@ -78,6 +78,19 @@ pub struct DeclarationStatement {
 }
 
 #[derive(Debug)]
+pub struct AssignStatement {
+    pub variable: VariableAssign,
+    pub expression: Expression,
+}
+
+#[derive(Debug)]
+pub enum VariableAssign {
+    Variable(String),
+    Array(Box<VariableAssign>, Box<Expression>),
+    //SubVariable(Box<VariableAssign>, Box<VariableAssign>) TODO using dot operator
+}
+
+#[derive(Debug)]
 pub enum Statement {
     If(IfStatement),
     Else(ElseStatement),
@@ -89,6 +102,7 @@ pub enum Statement {
     Break,
     Continue,
     Variable(DeclarationStatement),
+    Assign(AssignStatement),
 }
 
 #[derive(Debug)]
@@ -240,24 +254,13 @@ impl Parser {
 
         let mut require_operator = false;
         let mut token = self.view_current()?;
-        while require_operator == token.token.is_operator() || token.token == Token::BracketOpen {
+        while require_operator == token.token.is_operator() {
             next_token!(self);
             if require_operator {
                 match state {
                     ExpressionHelper::Operator => {
-                        if token.token == Token::BracketOpen {
-                            let ex = self.read_expression()?;
-                            next_token!(self, BracketClose);
-
-                            require_operator = !require_operator;
-                            expr = Some(Expression::ArrayCall(
-                                Box::new(expr.take().expect("Expected identifier call")),
-                                Box::new(ex),
-                            ));
-                        } else {
-                            state = ExpressionHelper::Right;
-                            operator = Some(&token.token);
-                        }
+                        state = ExpressionHelper::Right;
+                        operator = Some(&token.token);
                     }
                     _ => {
                         return Err(ParserError::UnexpectedToken(
@@ -304,9 +307,31 @@ impl Parser {
                                     }
                                 }
 
+                                let mut expr = Expression::FunctionCall(function_name, expressions);
                                 next_token!(self, ParenthesisClose);
-                                Expression::FunctionCall(function_name, expressions)
+                                if self.view_current()?.token == Token::BracketOpen {
+                                    next_token!(self);
+                                    let ex = self.read_expression()?;
+                                    next_token!(self, BracketClose);
+        
+                                    require_operator = !require_operator;
+                                    expr = Expression::ArrayCall(
+                                        Box::new(expr),
+                                        Box::new(ex),
+                                    );
+                                }
+                                expr
                             }
+                            Token::BracketOpen => {
+                                next_token!(self);
+                                let ex = self.read_expression()?;
+                                next_token!(self, BracketClose);
+
+                                Expression::ArrayCall(
+                                    Box::new(Expression::Variable(token.value.clone())),
+                                    Box::new(ex),
+                                )
+                            },
                             _ => Expression::Variable(token.value.clone()),
                         }
                     }
@@ -402,7 +427,7 @@ impl Parser {
         let mut current = self.view_current()?;
 
         while current.token != Token::BraceClose {
-            let statement = self.read_statement()?;
+            let statement = self.read_statement(&mut statements)?;
             statements.push(statement);
             current = self.view_current()?;
         }
@@ -412,7 +437,7 @@ impl Parser {
         return Ok(statements);
     }
 
-    fn read_statement(&self) -> ParserResult<Statement> {
+    fn read_statement(&self, statements: &mut Vec<Statement>) -> ParserResult<Statement> {
         let res: Statement = match self.view_current()?.token {
             Token::For => self.read_statement_for()?,
             Token::While => self.read_statement_while()?,
@@ -423,6 +448,7 @@ impl Parser {
             Token::BraceOpen => self.read_statement_scope()?,
             Token::Return => self.read_statement_return()?,
             Token::Let => self.read_statement_let()?,
+            Token::OperatorAssign => self.read_statement_assign(statements)?,
             _ => Statement::Expression(self.read_expression()?),
         };
 
@@ -521,6 +547,35 @@ impl Parser {
             value_type: var_type,
             value: _value,
         }))
+    }
+
+    fn read_statement_assign(&self, statements: &mut Vec<Statement>) -> ParserResult<Statement> {
+        next_token!(self, OperatorAssign);
+        let last_statement = statements.remove(statements.len() - 1);
+        let variable = match last_statement {
+            Statement::Expression(exp) => self.get_path_for_variable(exp)?,/*match exp {
+                Expression::Variable(var) => var,
+                _ => return Err(ParserError::InvalidExpression(format!("Expected a variable before assignation: {:?}", exp)))
+            },*/
+            _ => return Err(ParserError::InvalidExpression("Unexpected statement before assignation!".to_string()))
+        };
+
+        let expression = self.read_expression()?;
+
+        Ok(Statement::Assign(AssignStatement {
+            variable,
+            expression,
+        }))
+    }
+
+    fn get_path_for_variable(&self, expression: Expression) -> ParserResult<VariableAssign> {
+        let res = match expression {
+            Expression::Variable(v) => VariableAssign::Variable(v),
+            Expression::ArrayCall(val, index) => VariableAssign::Array(Box::new(self.get_path_for_variable(*val)?), index),
+            _ => return Err(ParserError::InvalidExpression("Expected a variable/array call".to_string()))
+        };
+
+        Ok(res)
     }
 
     fn read_parameters(&self) -> ParserResult<Vec<Parameter>> {

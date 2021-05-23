@@ -132,7 +132,7 @@ impl Token {
     pub fn is_operator(&self) -> bool {
         use Token::*;
         match self {
-            OperatorAssign
+            //OperatorAssign
             | OperatorEquals
             | OperatorNotEquals
             | OperatorAnd
@@ -146,10 +146,10 @@ impl Token {
             | OperatorMultiply
             | OperatorDivide
             | OperatorModulo
-            | OperatorPlusAssign
+            /*| OperatorPlusAssign
             | OperatorMinusAssign
             | OperatorMultiplyAssign
-            | OperatorDivideAssign
+            | OperatorDivideAssign*/
             | OperatorBitwiseLeft
             | OperatorBitwiseRight
             | Dot => true,

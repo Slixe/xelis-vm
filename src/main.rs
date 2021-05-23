@@ -4,7 +4,6 @@ use std::fs;
 use vm::interpreter::*;
 use vm::lexer::*;
 use vm::parser::*;
-use vm::value_type::*;
 
 fn main() {
     let code: String =

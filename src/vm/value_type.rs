@@ -1,7 +1,7 @@
 use super::lexer::*;
 use super::parser::Structure;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Literal {
     Null,
     String(String),
@@ -9,7 +9,7 @@ pub enum Literal {
     Boolean(bool),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Type {
     String,
     Number,
