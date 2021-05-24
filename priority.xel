@@ -1,20 +1,12 @@
+struct Order {
+    values: []number,
+    price: number
+}
+
 entry main() {
-    let a = [1+1, 2+2]
-    a[0] = 1
-
-    let b = test(a[1] * a[0] + 10)
-    
-    return fibonacci(10)
-}
-
-func test(a: number): number {
-    return a * 15
-}
-
-func fibonacci(n: number): number {
-    if n <= 1 {
-        return n
+    let order = Order {
+        values: [11, 23, 1, 7, 46],
+        price: 15
     }
-
-    return fibonacci(n - 1) + fibonacci(n - 2)
+    return order.values
 }

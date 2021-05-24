@@ -17,9 +17,7 @@ fn main() {
         Err(err) => panic!("Error while building program: {:?}", err),
     };
 
-    println!("{:?}", program);
-
-    let interpreter = Interpreter::new(program);
+    let interpreter = Interpreter::new(program.clone());
     println!(
         "{:?}",
         interpreter.run_function(

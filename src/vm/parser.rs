@@ -23,8 +23,9 @@ macro_rules! next_token {
         v
     }};
 }
+use std::collections::HashMap;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expression {
     Operator(Operator),
     Value(Literal),
@@ -33,64 +34,65 @@ pub enum Expression {
     ArrayCall(Box<Expression>, Box<Expression>),
     ArrayConstructor(Vec<Expression>),
     SubExpression(Box<Expression>),
+    Structure(String, HashMap<String, Expression>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExpressionHelper {
     Left,
     Operator,
     Right,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IfStatement {
     pub condition: Expression,
     pub body: Vec<Statement>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ElseStatement {
     pub body: Vec<Statement>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WhileStatement {
     pub condition: Expression,
     pub body: Vec<Statement>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ForStatement {
     pub condition: Expression,
     pub body: Vec<Statement>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ScopeStatement {
     pub body: Vec<Statement>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DeclarationStatement {
     pub name: String,
     pub value_type: Option<Type>,
     pub value: Option<Expression>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AssignStatement {
     pub variable: VariableAssign,
     pub expression: Expression,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum VariableAssign {
     Variable(String),
     Array(Box<VariableAssign>, Expression),
-    //SubVariable(Box<VariableAssign>, Box<VariableAssign>) TODO using dot operator
+    //SubVariable(Box<VariableAssign>, Box<VariableAssign>)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Statement {
     If(IfStatement),
     Else(ElseStatement),
@@ -105,7 +107,7 @@ pub enum Statement {
     Assign(AssignStatement),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Function {
     pub name: String,
     pub parameters: Vec<Parameter>,
@@ -114,26 +116,26 @@ pub struct Function {
     pub entry: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Structure {
     pub name: String,
     pub parameters: Vec<Parameter>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Parameter {
     pub name: String,
     pub value_type: Type,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Constant {
     pub name: String,
     pub value_type: Type,
     pub value: Expression,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Program {
     pub structures: Vec<Structure>,
     pub constants: Vec<Constant>,
@@ -329,6 +331,24 @@ impl Parser {
                                     Box::new(ex),
                                 )
                             }
+                            Token::BraceOpen => {
+                                next_token!(self);
+                                let mut params = HashMap::new();
+                                let mut current = self.view_current()?;
+                                while current.token != Token::BraceClose {
+                                    let field = next_token!(self, Identifier).value.clone();
+                                    next_token!(self, Colon);
+                                    let value = self.read_expression()?;
+                                    params.insert(field, value);
+                                    current = self.view_current()?;
+                                    if current.token == Token::Comma {
+                                        next_token!(self);
+                                        current = self.view_current()?;
+                                    }
+                                }
+                                next_token!(self, BraceClose);
+                                Expression::Structure(token.value.clone(), params)
+                            },
                             _ => Expression::Variable(token.value.clone()),
                         }
                     }

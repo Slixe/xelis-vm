@@ -132,7 +132,6 @@ impl Token {
     pub fn is_operator(&self) -> bool {
         use Token::*;
         match self {
-            //OperatorAssign
             | OperatorEquals
             | OperatorNotEquals
             | OperatorAnd

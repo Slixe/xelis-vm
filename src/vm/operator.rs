@@ -1,7 +1,7 @@
 use super::lexer::Token;
 use super::parser::Expression;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Operator {
     //OperatorAssign(Box<Expression>, Box<Expression>),
     OperatorEquals(Box<Expression>, Box<Expression>),

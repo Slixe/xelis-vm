@@ -14,7 +14,7 @@ pub enum Type {
     String,
     Number,
     Boolean,
-    Struct(String),
+    Structure(String),
     Array(Box<Type>),
 }
 
@@ -31,7 +31,7 @@ impl Type {
                 _ => {
                     for structure in structures {
                         if structure.name == value.value {
-                            return Some(Type::Struct(value.value.clone()));
+                            return Some(Type::Structure(value.value.clone()));
                         }
                     }
 
