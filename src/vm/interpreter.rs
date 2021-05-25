@@ -8,19 +8,19 @@ use std::collections::HashMap;
 pub struct Interpreter {
     constants: Scope,
     functions: HashMap<String, Function>,
-    structures: HashMap<String, Structure>
+    structures: HashMap<String, Structure>,
 }
 
 #[derive(Debug)]
 pub struct Structure {
-    pub fields: HashMap<String, Type>
+    pub fields: HashMap<String, Type>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Value {
     Array(Vec<Value>),
     Literal(Literal),
-    Structure(String, Scope)
+    Structure(String, Scope),
 }
 
 #[derive(Debug, Clone)]
@@ -79,31 +79,36 @@ impl Interpreter {
         println!("{:?}", program);
 
         for constant in program.constants {
-            let value = match interpreter.execute_expression(&constant.value, &interpreter.constants) {
-                Some(v) => v,
-                None => panic!("No value found for this constant")
-            };
+            let value =
+                match interpreter.execute_expression(&constant.value, &interpreter.constants) {
+                    Some(v) => v,
+                    None => panic!("No value found for this constant"),
+                };
 
             let variable = Variable {
                 value_type: interpreter.get_type_of_value(&value),
-                value
+                value,
             };
 
-            interpreter.constants.register_variable(&constant.name, variable);
+            interpreter
+                .constants
+                .register_variable(&constant.name, variable);
         }
 
         for function in program.functions {
-            interpreter.functions.insert(function.name.clone(), function);
+            interpreter
+                .functions
+                .insert(function.name.clone(), function);
         }
 
         for structure in program.structures {
             let mut fields = HashMap::new();
             for param in structure.parameters {
-                fields.insert(param.name, param.value_type);   
+                fields.insert(param.name, param.value_type);
             }
-            interpreter.structures.insert(structure.name, Structure {
-                fields
-            });
+            interpreter
+                .structures
+                .insert(structure.name, Structure { fields });
         }
 
         return interpreter;
@@ -267,15 +272,14 @@ impl Interpreter {
             },
             Value::Array(values) => {
                 if values.len() > 0 {
-                    return Type::Array(Box::new(self.get_type_of_value(&values[0])))
+                    return Type::Array(Box::new(self.get_type_of_value(&values[0])));
                 }
 
                 panic!("Expected at least one value to determine Array type!")
-            },
-            Value::Structure(name, _) => Type::Structure(name.clone())
+            }
+            Value::Structure(name, _) => Type::Structure(name.clone()),
         }
     }
-
 
     fn assign_value<'a>(
         &self,
@@ -287,9 +291,10 @@ impl Interpreter {
         match var {
             VariableAssign::Variable(v) => {
                 if return_var {
-                   return scope.get_mut_variable(v)
+                    return scope.get_mut_variable(v);
                 }
-                let val = self.execute_expression_and_validate_type(value, scope, scope.get_type(&v)?)?;
+                let val =
+                    self.execute_expression_and_validate_type(value, scope, scope.get_type(&v)?)?;
                 scope.set_variable_value(v, val);
             }
             VariableAssign::Array(v, index) => {
@@ -300,31 +305,30 @@ impl Interpreter {
 
                 let cloned_scope = scope.clone(); //TODO search another way
                 let var = self.assign_value(v, value, scope, true)?;
-                
+
                 let value_type = match var.value_type {
                     Type::Array(ref v) => v,
-                    _ => panic!("Invalid type for array call")
+                    _ => panic!("Invalid type for array call"),
                 };
 
-                let val = self.execute_expression_and_validate_type(value, &cloned_scope, value_type)?;
+                let val =
+                    self.execute_expression_and_validate_type(value, &cloned_scope, value_type)?;
                 match var.value {
-                    Value::Array(ref mut values) => {
-                        std::mem::replace(&mut values[i], val)
-                    }
+                    Value::Array(ref mut values) => std::mem::replace(&mut values[i], val),
                     _ => panic!("How is it possible ? Expected a Array value"),
                 };
             }
             VariableAssign::SubVariable(left, right) => {
                 let left_var = match self.assign_value(left, value, scope, true) {
                     Some(v) => v,
-                    None => panic!("Variable not found! '{:?}'", left)
+                    None => panic!("Variable not found! '{:?}'", left),
                 };
 
                 match left_var.value {
                     Value::Structure(_, ref mut values) => {
                         return self.assign_value(right, value, values, return_var)
                     }
-                    _ => panic!("Expected a Structure value, how is it possible ?")
+                    _ => panic!("Expected a Structure value, how is it possible ?"),
                 }
             }
         };
@@ -375,11 +379,19 @@ impl Interpreter {
         }
     }
 
-    fn execute_expression_and_validate_type(&self, expr: &Expression, scope: &Scope, value_type: &Type) -> Option<Value> {
+    fn execute_expression_and_validate_type(
+        &self,
+        expr: &Expression,
+        scope: &Scope,
+        value_type: &Type,
+    ) -> Option<Value> {
         let value = self.execute_expression(expr, scope)?;
         let _type = self.get_type_of_value(&value);
-        if  _type != *value_type {
-            panic!("Invalid value type got {:?} for value {:?} but expected type {:?}", _type, value, value_type);
+        if _type != *value_type {
+            panic!(
+                "Invalid value type got {:?} for value {:?} but expected type {:?}",
+                _type, value, value_type
+            );
         }
 
         Some(value)
@@ -402,13 +414,17 @@ impl Interpreter {
                 for (field, value_type) in &structure.fields {
                     let expr = match expressions.get(field) {
                         Some(v) => v,
-                        None => panic!("Field {} not found in Structure {}", field, name)
+                        None => panic!("Field {} not found in Structure {}", field, name),
                     };
-                    let value = self.execute_expression_and_validate_type(expr, scope, value_type)?;
-                    values.register_variable(&field, Variable {
-                        value,
-                        value_type: value_type.clone()
-                    });
+                    let value =
+                        self.execute_expression_and_validate_type(expr, scope, value_type)?;
+                    values.register_variable(
+                        &field,
+                        Variable {
+                            value,
+                            value_type: value_type.clone(),
+                        },
+                    );
                 }
 
                 Some(Value::Structure(name.clone(), values))
@@ -441,144 +457,142 @@ impl Interpreter {
             Expression::FunctionCall(func_name, params) => {
                 self.execute_function_and_params(func_name, params, scope)
             }
-            Expression::Operator(operator) => match operator {
-                Operator::Dot(left, right) => {
-                    match self.execute_expression(left, scope)? {
+            Expression::Operator(operator) => {
+                match operator {
+                    Operator::Dot(left, right) => match self.execute_expression(left, scope)? {
                         Value::Structure(_, values) => self.execute_expression(right, &values),
                         _ => panic!("not a structure, where are you trying to use dot operator ?"),
+                    },
+                    Operator::OperatorAnd(left, right) => {
+                        if let Some((left, right)) = self.get_booleans(left, right, scope) {
+                            Some(Value::Literal(Literal::Boolean(left && right)))
+                        } else {
+                            None
+                        }
                     }
-                }
-                Operator::OperatorAnd(left, right) => {
-                    if let Some((left, right)) = self.get_booleans(left, right, scope) {
-                        Some(Value::Literal(Literal::Boolean(left && right)))
-                    } else {
-                        None
+                    Operator::OperatorOr(left, right) => {
+                        if let Some((left, right)) = self.get_booleans(left, right, scope) {
+                            Some(Value::Literal(Literal::Boolean(left || right)))
+                        } else {
+                            None
+                        }
                     }
-                }
-                Operator::OperatorOr(left, right) => {
-                    if let Some((left, right)) = self.get_booleans(left, right, scope) {
-                        Some(Value::Literal(Literal::Boolean(left || right)))
-                    } else {
-                        None
-                    }
-                }
-                Operator::OperatorEquals(left, right) => {
-                    let left = self.execute_expression_and_expect_literal(&left, scope)?;
-                    let right = self.execute_expression_and_expect_literal(&right, scope)?;
+                    Operator::OperatorEquals(left, right) => {
+                        let left = self.execute_expression_and_expect_literal(&left, scope)?;
+                        let right = self.execute_expression_and_expect_literal(&right, scope)?;
 
-                    Some(Value::Literal(Literal::Boolean(left == right)))
-                }
-                Operator::OperatorNotEquals(left, right) => {
-                    let left = self.execute_expression_and_expect_literal(&left, scope)?;
-                    let right = self.execute_expression_and_expect_literal(&right, scope)?;
+                        Some(Value::Literal(Literal::Boolean(left == right)))
+                    }
+                    Operator::OperatorNotEquals(left, right) => {
+                        let left = self.execute_expression_and_expect_literal(&left, scope)?;
+                        let right = self.execute_expression_and_expect_literal(&right, scope)?;
 
-                    Some(Value::Literal(Literal::Boolean(left != right)))
-                }
-                Operator::OperatorGreaterThan(left, right) => {
-                    if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                        Some(Value::Literal(Literal::Boolean(left > right)))
-                    } else {
-                        panic!("Expected two numbers");
+                        Some(Value::Literal(Literal::Boolean(left != right)))
                     }
-                }
-                Operator::OperatorGreaterOrEqual(left, right) => {
-                    if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                        Some(Value::Literal(Literal::Boolean(left >= right)))
-                    } else {
-                        panic!("Expected two numbers");
+                    Operator::OperatorGreaterThan(left, right) => {
+                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
+                            Some(Value::Literal(Literal::Boolean(left > right)))
+                        } else {
+                            panic!("Expected two numbers");
+                        }
                     }
-                }
-                Operator::OperatorLessThan(left, right) => {
-                    if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                        Some(Value::Literal(Literal::Boolean(left < right)))
-                    } else {
-                        panic!("Expected two numbers");
+                    Operator::OperatorGreaterOrEqual(left, right) => {
+                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
+                            Some(Value::Literal(Literal::Boolean(left >= right)))
+                        } else {
+                            panic!("Expected two numbers");
+                        }
                     }
-                }
-                Operator::OperatorLessOrEqual(left, right) => {
-                    if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                        Some(Value::Literal(Literal::Boolean(left <= right)))
-                    } else {
-                        panic!("Expected two numbers");
+                    Operator::OperatorLessThan(left, right) => {
+                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
+                            Some(Value::Literal(Literal::Boolean(left < right)))
+                        } else {
+                            panic!("Expected two numbers");
+                        }
                     }
-                }
-                Operator::OperatorModulo(left, right) => {
-                    if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                        Some(Value::Literal(Literal::Number(left % right)))
-                    } else {
-                        panic!("Expected two numbers");
+                    Operator::OperatorLessOrEqual(left, right) => {
+                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
+                            Some(Value::Literal(Literal::Boolean(left <= right)))
+                        } else {
+                            panic!("Expected two numbers");
+                        }
                     }
-                }
-                Operator::OperatorBitwiseLeft(left, right) => {
-                    if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                        Some(Value::Literal(Literal::Number(left << right)))
-                    } else {
-                        panic!("Expected two numbers");
+                    Operator::OperatorModulo(left, right) => {
+                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
+                            Some(Value::Literal(Literal::Number(left % right)))
+                        } else {
+                            panic!("Expected two numbers");
+                        }
                     }
-                }
-                Operator::OperatorBitwiseRight(left, right) => {
-                    if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                        Some(Value::Literal(Literal::Number(left >> right)))
-                    } else {
-                        panic!("Expected two numbers");
+                    Operator::OperatorBitwiseLeft(left, right) => {
+                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
+                            Some(Value::Literal(Literal::Number(left << right)))
+                        } else {
+                            panic!("Expected two numbers");
+                        }
                     }
-                }
-                Operator::OperatorMultiply(left, right) => {
-                    if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                        Some(Value::Literal(Literal::Number(left * right)))
-                    } else {
-                        panic!("Expected two numbers");
+                    Operator::OperatorBitwiseRight(left, right) => {
+                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
+                            Some(Value::Literal(Literal::Number(left >> right)))
+                        } else {
+                            panic!("Expected two numbers");
+                        }
                     }
-                }
-                Operator::OperatorDivide(left, right) => {
-                    if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                        Some(Value::Literal(Literal::Number(left / right)))
-                    } else {
-                        panic!("Expected two numbers");
+                    Operator::OperatorMultiply(left, right) => {
+                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
+                            Some(Value::Literal(Literal::Number(left * right)))
+                        } else {
+                            panic!("Expected two numbers");
+                        }
                     }
-                }
-                Operator::OperatorPlus(left, right) => {
-                    let left = self.execute_expression_and_expect_literal(left, scope)?;
-                    let right = self.execute_expression_and_expect_literal(right, scope)?;
+                    Operator::OperatorDivide(left, right) => {
+                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
+                            Some(Value::Literal(Literal::Number(left / right)))
+                        } else {
+                            panic!("Expected two numbers");
+                        }
+                    }
+                    Operator::OperatorPlus(left, right) => {
+                        let left = self.execute_expression_and_expect_literal(left, scope)?;
+                        let right = self.execute_expression_and_expect_literal(right, scope)?;
 
-                    match left {
-                        Literal::Number(left_val) => match right {
-                            Literal::Number(val) => {
-                                Some(Value::Literal(Literal::Number(left_val + val)))
-                            }
-                            Literal::String(val) => Some(Value::Literal(Literal::String(format!(
-                                "{}{}",
-                                left_val, val
-                            )))),
-                            _ => panic!("Error! Invalid type for this operator"),
-                        },
-                        Literal::String(left_val) => match right {
-                            Literal::String(val) => {
-                                Some(Value::Literal(Literal::String(left_val + &val)))
-                            }
-                            Literal::Number(val) => Some(Value::Literal(Literal::String(format!(
-                                "{}{}",
-                                left_val, val
-                            )))),
-                            Literal::Boolean(val) => Some(Value::Literal(Literal::String(
-                                format!("{}{}", left_val, val),
-                            ))),
-                            Literal::Null => Some(Value::Literal(Literal::String(format!(
-                                "{}{}",
-                                left_val, "null"
-                            )))),
-                        },
-                        _ => panic!("Error! Invalid type for + operator"),
+                        match left {
+                            Literal::Number(left_val) => match right {
+                                Literal::Number(val) => {
+                                    Some(Value::Literal(Literal::Number(left_val + val)))
+                                }
+                                Literal::String(val) => Some(Value::Literal(Literal::String(
+                                    format!("{}{}", left_val, val),
+                                ))),
+                                _ => panic!("Error! Invalid type for this operator"),
+                            },
+                            Literal::String(left_val) => match right {
+                                Literal::String(val) => {
+                                    Some(Value::Literal(Literal::String(left_val + &val)))
+                                }
+                                Literal::Number(val) => Some(Value::Literal(Literal::String(
+                                    format!("{}{}", left_val, val),
+                                ))),
+                                Literal::Boolean(val) => Some(Value::Literal(Literal::String(
+                                    format!("{}{}", left_val, val),
+                                ))),
+                                Literal::Null => Some(Value::Literal(Literal::String(format!(
+                                    "{}{}",
+                                    left_val, "null"
+                                )))),
+                            },
+                            _ => panic!("Error! Invalid type for + operator"),
+                        }
+                    }
+                    Operator::OperatorMinus(left, right) => {
+                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
+                            Some(Value::Literal(Literal::Number(left - right)))
+                        } else {
+                            panic!("Expected two numbers");
+                        }
                     }
                 }
-                Operator::OperatorMinus(left, right) => {
-                    if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                        Some(Value::Literal(Literal::Number(left - right)))
-                    } else {
-                        panic!("Expected two numbers");
-                    }
-                }
-            },
+            }
             Expression::SubExpression(sub) => self.execute_expression(sub, scope),
         }
     }

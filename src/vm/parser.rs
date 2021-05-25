@@ -89,7 +89,7 @@ pub struct AssignStatement {
 pub enum VariableAssign {
     Variable(String),
     Array(Box<VariableAssign>, Expression),
-    SubVariable(Box<VariableAssign>, Box<VariableAssign>)
+    SubVariable(Box<VariableAssign>, Box<VariableAssign>),
 }
 
 #[derive(Debug, Clone)]
@@ -311,14 +311,16 @@ impl Parser {
 
                                 let mut expr = Expression::FunctionCall(function_name, expressions);
                                 next_token!(self, ParenthesisClose);
-                                
+
                                 if self.view_current()?.token == Token::BracketOpen {
                                     expr = self.read_array_call(expr)?;
                                 }
 
                                 expr
                             }
-                            Token::BracketOpen => self.read_array_call(Expression::Variable(token.value.clone()))?,
+                            Token::BracketOpen => {
+                                self.read_array_call(Expression::Variable(token.value.clone()))?
+                            }
                             Token::BraceOpen => {
                                 next_token!(self);
                                 let mut params = HashMap::new();
@@ -336,7 +338,7 @@ impl Parser {
                                 }
                                 next_token!(self, BraceClose);
                                 Expression::Structure(token.value.clone(), params)
-                            },
+                            }
                             _ => Expression::Variable(token.value.clone()),
                         }
                     }
@@ -588,11 +590,13 @@ impl Parser {
                     let left_var = self.get_path_for_variable(*left)?;
                     let right_var = self.get_path_for_variable(*right)?;
                     VariableAssign::SubVariable(Box::new(left_var), Box::new(right_var))
-                },
-                _ => return Err(ParserError::InvalidExpression(
-                    "Expected a dot operator".to_string(),
-                ))
-            }
+                }
+                _ => {
+                    return Err(ParserError::InvalidExpression(
+                        "Expected a dot operator".to_string(),
+                    ))
+                }
+            },
             _ => {
                 return Err(ParserError::InvalidExpression(
                     "Expected a variable/array call".to_string(),
@@ -653,16 +657,13 @@ impl Parser {
             let index = self.read_expression()?;
             next_token!(self, BracketClose);
 
-            final_expr = Expression::ArrayCall(
-                Box::new(final_expr),
-                Box::new(index),
-            );
+            final_expr = Expression::ArrayCall(Box::new(final_expr), Box::new(index));
 
             if self.view_current()?.token != Token::BracketOpen {
                 break;
             }
         }
-        
+
         Ok(final_expr)
     }
     fn get_type(&self) -> ParserResult<Type> {
