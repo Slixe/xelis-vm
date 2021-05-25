@@ -1,7 +1,9 @@
 use super::lexer::*;
 use super::parser::Structure;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub enum Literal {
     Null,
     String(String),
@@ -9,7 +11,7 @@ pub enum Literal {
     Boolean(bool),
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub enum Type {
     String,
     Number,

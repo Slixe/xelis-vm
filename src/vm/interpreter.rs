@@ -3,33 +3,34 @@ use super::parser::*;
 use super::value_type::*;
 
 use std::collections::HashMap;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Interpreter {
     constants: Scope,
     functions: HashMap<String, Function>,
     structures: HashMap<String, Structure>,
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Structure {
     pub fields: HashMap<String, Type>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Value {
     Array(Vec<Value>),
     Literal(Literal),
     Structure(String, Scope),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Variable {
     pub value: Value,
     pub value_type: Type,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Scope {
     variables: HashMap<String, Variable>,
 }
@@ -76,8 +77,6 @@ impl Interpreter {
             structures: HashMap::new(),
         };
 
-        println!("{:?}", program);
-
         for constant in program.constants {
             let value =
                 match interpreter.execute_expression(&constant.value, &interpreter.constants) {
@@ -110,6 +109,9 @@ impl Interpreter {
                 .structures
                 .insert(structure.name, Structure { fields });
         }
+
+
+        println!("{}", serde_json::to_string(&interpreter).unwrap());
 
         return interpreter;
     }
@@ -243,7 +245,8 @@ impl Interpreter {
                     None => {}
                 },
                 Statement::Assign(value) => {
-                    self.assign_value(&value.variable, &value.expression, scope, false);
+                    let expr_scope = scope.clone(); //TODO search another way
+                    self.assign_value(&value.variable, &value.expression, scope, &expr_scope, false);
                 }
                 _ => {
                     panic!(format!("Statement not implemented: {:?}", statement));
@@ -281,52 +284,60 @@ impl Interpreter {
         }
     }
 
+    //TODO rework this function
     fn assign_value<'a>(
         &self,
         var: &VariableAssign,
         value: &Expression,
         scope: &'a mut Scope,
+        expr_scope: &Scope,
         return_var: bool,
-    ) -> Option<&'a mut Variable> {
+    ) -> Option<(&'a mut Value, &'a Type)> {
         match var {
             VariableAssign::Variable(v) => {
                 if return_var {
-                    return scope.get_mut_variable(v);
+                    let var = scope.get_mut_variable(v)?;
+                    return Some((&mut var.value, &var.value_type))
                 }
                 let val =
-                    self.execute_expression_and_validate_type(value, scope, scope.get_type(&v)?)?;
+                    self.execute_expression_and_validate_type(value, expr_scope, scope.get_type(&v)?)?;
                 scope.set_variable_value(v, val);
             }
             VariableAssign::Array(v, index) => {
-                let i = match self.execute_expression_and_expect_literal(index, scope)? {
+                let i = match self.execute_expression_and_expect_literal(index, expr_scope)? {
                     Literal::Number(val) => val,
                     _ => panic!("Invalid index for array call"),
                 };
 
-                let cloned_scope = scope.clone(); //TODO search another way
-                let var = self.assign_value(v, value, scope, true)?;
+                let var = self.assign_value(v, value, scope, expr_scope, true)?;
+                match var.0 {
+                    Value::Array(ref mut values) => {
+                        let value_type = match var.1 {
+                            Type::Array(ref v) => v,
+                            _ => panic!("Invalid type for array call"),
+                        };
 
-                let value_type = match var.value_type {
-                    Type::Array(ref v) => v,
-                    _ => panic!("Invalid type for array call"),
-                };
+                        if return_var {
+                            return Some((&mut values[i], value_type))
+                        }
 
-                let val =
-                    self.execute_expression_and_validate_type(value, &cloned_scope, value_type)?;
-                match var.value {
-                    Value::Array(ref mut values) => std::mem::replace(&mut values[i], val),
+                        let val =
+                            self.execute_expression_and_validate_type(value, expr_scope, value_type)?;
+
+                        std::mem::replace(&mut values[i], val)
+                    }
                     _ => panic!("How is it possible ? Expected a Array value"),
                 };
             }
             VariableAssign::SubVariable(left, right) => {
-                let left_var = match self.assign_value(left, value, scope, true) {
+                let left_var = match self.assign_value(left, value, scope, expr_scope, true) {
                     Some(v) => v,
                     None => panic!("Variable not found! '{:?}'", left),
                 };
 
-                match left_var.value {
+                match left_var.0 {
                     Value::Structure(_, ref mut values) => {
-                        return self.assign_value(right, value, values, return_var)
+                        return self.assign_value(right, value, values, expr_scope, return_var)
                     }
                     _ => panic!("Expected a Structure value, how is it possible ?"),
                 }
@@ -375,7 +386,7 @@ impl Interpreter {
     ) -> Option<Literal> {
         match self.execute_expression(expr, scope)? {
             Value::Literal(v) => Some(v),
-            _ => panic!("Only literal are allowed!"),
+            _ => panic!("Only literal are allowed! Expression: {}", serde_json::to_string_pretty(&expr).unwrap()),
         }
     }
 

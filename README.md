@@ -13,8 +13,8 @@ File extension is .xel
 
  - [x] Lexer
  - [x] Parser
- - [ ] Verifer (type checking...)
- - [ ] Interpreter 
+ - [ ] Verifier (type checking...)
+ - [x] Interpreter 
  - [ ] Documentation
 
 ## How it works

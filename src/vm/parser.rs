@@ -2,6 +2,8 @@ use super::lexer::*;
 use super::operator::*;
 use super::value_type::*;
 
+use serde::{Serialize, Deserialize};
+
 macro_rules! next_token {
     ($self: expr) => {{
         let i = $self.cursor.get();
@@ -25,7 +27,7 @@ macro_rules! next_token {
 }
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Expression {
     Operator(Operator),
     Value(Literal),
@@ -37,62 +39,62 @@ pub enum Expression {
     Structure(String, HashMap<String, Expression>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ExpressionHelper {
     Left,
     Operator,
     Right,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct IfStatement {
     pub condition: Expression,
     pub body: Vec<Statement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ElseStatement {
     pub body: Vec<Statement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WhileStatement {
     pub condition: Expression,
     pub body: Vec<Statement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ForStatement {
     pub condition: Expression,
     pub body: Vec<Statement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ScopeStatement {
     pub body: Vec<Statement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DeclarationStatement {
     pub name: String,
     pub value_type: Option<Type>,
     pub value: Option<Expression>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AssignStatement {
     pub variable: VariableAssign,
     pub expression: Expression,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum VariableAssign {
     Variable(String),
     Array(Box<VariableAssign>, Expression),
     SubVariable(Box<VariableAssign>, Box<VariableAssign>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Statement {
     If(IfStatement),
     Else(ElseStatement),
@@ -107,7 +109,7 @@ pub enum Statement {
     Assign(AssignStatement),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Function {
     pub name: String,
     pub parameters: Vec<Parameter>,
@@ -116,26 +118,26 @@ pub struct Function {
     pub entry: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Structure {
     pub name: String,
     pub parameters: Vec<Parameter>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Parameter {
     pub name: String,
     pub value_type: Type,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Constant {
     pub name: String,
     pub value_type: Type,
     pub value: Expression,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Program {
     pub structures: Vec<Structure>,
     pub constants: Vec<Constant>,

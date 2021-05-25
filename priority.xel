@@ -1,5 +1,22 @@
+struct Third {
+    value: [][][]number
+}
+
+struct Second {
+    third: Third
+}
+
+struct First {
+    second: Second
+}
 entry main() {
-    let a = [[10, 24, 10, 10], [11,11,11,11]]
-    a[0][1] = 1 //TODO
-    return a[0][1]
+    let first = First {
+        second: Second {
+            third: Third {
+                value: [[[50, 23, 67], [17, 42, 38]], [[10, 25, 30], [24, 55, 98]]]
+            }
+        }
+    }
+    first.second.third.value[0][0][2] = first.second.third.value[0][0][2] * 2 //error here: first.second.third.value[0][0][0]
+    return first.second.third.value[0][0][2]
 }

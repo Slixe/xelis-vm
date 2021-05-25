@@ -1,7 +1,9 @@
 use super::lexer::Token;
 use super::parser::Expression;
 
-#[derive(Debug, Clone)]
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Operator {
     //OperatorAssign(Box<Expression>, Box<Expression>),
     OperatorEquals(Box<Expression>, Box<Expression>),
