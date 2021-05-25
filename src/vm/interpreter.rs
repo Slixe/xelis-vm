@@ -20,7 +20,7 @@ pub struct Structure {
 pub enum Value {
     Array(Vec<Value>),
     Literal(Literal),
-    Structure(String, HashMap<String, Value>)
+    Structure(String, Scope)
 }
 
 #[derive(Debug, Clone)]
@@ -76,6 +76,8 @@ impl Interpreter {
             structures: HashMap::new(),
         };
 
+        println!("{:?}", program);
+
         for constant in program.constants {
             let value = match interpreter.execute_expression(&constant.value, &interpreter.constants) {
                 Some(v) => v,
@@ -103,8 +105,6 @@ impl Interpreter {
                 fields
             });
         }
-
-        println!("{:?}", interpreter);
 
         return interpreter;
     }
@@ -238,7 +238,7 @@ impl Interpreter {
                     None => {}
                 },
                 Statement::Assign(value) => {
-                    self.assign_value(&value.variable, &value.expression, scope);
+                    self.assign_value(&value.variable, &value.expression, scope, false);
                 }
                 _ => {
                     panic!(format!("Statement not implemented: {:?}", statement));
@@ -276,14 +276,19 @@ impl Interpreter {
         }
     }
 
-    fn assign_value(
+
+    fn assign_value<'a>(
         &self,
         var: &VariableAssign,
         value: &Expression,
-        scope: &mut Scope,
-    ) -> Option<Value> {
+        scope: &'a mut Scope,
+        return_var: bool,
+    ) -> Option<&'a mut Variable> {
         match var {
             VariableAssign::Variable(v) => {
+                if return_var {
+                   return scope.get_mut_variable(v)
+                }
                 let val = self.execute_expression_and_validate_type(value, scope, scope.get_type(&v)?)?;
                 scope.set_variable_value(v, val);
             }
@@ -293,23 +298,34 @@ impl Interpreter {
                     _ => panic!("Invalid index for array call"),
                 };
 
-                match v.as_ref() {
-                    VariableAssign::Variable(v) => {
-                        let _type = match scope.get_type(&v)? {
-                            Type::Array(ref v) => v,
-                            _ => panic!("Invalid type for array call")
-                        };
-
-                        let val = self.execute_expression_and_validate_type(value, scope, _type)?;
-                        match scope.get_mut_variable(&v)?.value {
-                            Value::Array(ref mut values) => {
-                                drop(std::mem::replace(&mut values[i], val))
-                            }
-                            _ => panic!("How is it possible ? Expected a Array value"),
-                        };
-                    }
-                    _ => panic!("no variable"),
+                let cloned_scope = scope.clone(); //TODO search another way
+                let var = self.assign_value(v, value, scope, true)?;
+                
+                let value_type = match var.value_type {
+                    Type::Array(ref v) => v,
+                    _ => panic!("Invalid type for array call")
                 };
+
+                let val = self.execute_expression_and_validate_type(value, &cloned_scope, value_type)?;
+                match var.value {
+                    Value::Array(ref mut values) => {
+                        std::mem::replace(&mut values[i], val)
+                    }
+                    _ => panic!("How is it possible ? Expected a Array value"),
+                };
+            }
+            VariableAssign::SubVariable(left, right) => {
+                let left_var = match self.assign_value(left, value, scope, true) {
+                    Some(v) => v,
+                    None => panic!("Variable not found! '{:?}'", left)
+                };
+
+                match left_var.value {
+                    Value::Structure(_, ref mut values) => {
+                        return self.assign_value(right, value, values, return_var)
+                    }
+                    _ => panic!("Expected a Structure value, how is it possible ?")
+                }
             }
         };
 
@@ -382,13 +398,17 @@ impl Interpreter {
                     panic!("Mismatch amount of fields for this structure");
                 }
 
-                let mut values: HashMap<String, Value> = HashMap::new();
-                for (field, _type) in &structure.fields {
+                let mut values = Scope::new();
+                for (field, value_type) in &structure.fields {
                     let expr = match expressions.get(field) {
                         Some(v) => v,
                         None => panic!("Field {} not found in Structure {}", field, name)
                     };
-                    values.insert(field.clone(), self.execute_expression_and_validate_type(expr, scope, _type)?);
+                    let value = self.execute_expression_and_validate_type(expr, scope, value_type)?;
+                    values.register_variable(&field, Variable {
+                        value,
+                        value_type: value_type.clone()
+                    });
                 }
 
                 Some(Value::Structure(name.clone(), values))
@@ -424,18 +444,7 @@ impl Interpreter {
             Expression::Operator(operator) => match operator {
                 Operator::Dot(left, right) => {
                     match self.execute_expression(left, scope)? {
-                        Value::Structure(_, values) => {
-                            let name = match right.as_ref() { //TODO support multiple dot
-                                Expression::Variable(v) => v,
-                                _ => panic!("Invalid right expression, expected a identifier!")
-                            };
-                            /*match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::String(s) => s,
-                                _ => panic!("Invalid right expression, expected a identifier!")
-                            };*/
-
-                            Some(values.get(name)?.clone())
-                        },
+                        Value::Structure(_, values) => self.execute_expression(right, &values),
                         _ => panic!("not a structure, where are you trying to use dot operator ?"),
                     }
                 }

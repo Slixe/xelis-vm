@@ -13,7 +13,7 @@ const GLOBAL_RATE: number = 10
 
 entry main() {
     let multiple = [[bar(1,1), 10], [1,2]]
-    multiple[0][1] = 11 //10, then 11
+    multiple[0][1] = 11
     let array = [0, 5]
     let yes = true
     if yes && 1 == 1 {
@@ -24,7 +24,7 @@ entry main() {
     println('{}', array)
     hey.array[0]
     foo()[1]
-    hey.array = [1,2,3,4] //DEBUG HERE
+    hey.array = [1,2,3,4]
     hey.array.push(5)
     println('{}', hey.array)
 }

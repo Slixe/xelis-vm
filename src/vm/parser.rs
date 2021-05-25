@@ -89,7 +89,7 @@ pub struct AssignStatement {
 pub enum VariableAssign {
     Variable(String),
     Array(Box<VariableAssign>, Expression),
-    //SubVariable(Box<VariableAssign>, Box<VariableAssign>)
+    SubVariable(Box<VariableAssign>, Box<VariableAssign>)
 }
 
 #[derive(Debug, Clone)]
@@ -311,26 +311,14 @@ impl Parser {
 
                                 let mut expr = Expression::FunctionCall(function_name, expressions);
                                 next_token!(self, ParenthesisClose);
+                                
                                 if self.view_current()?.token == Token::BracketOpen {
-                                    next_token!(self);
-                                    let ex = self.read_expression()?;
-                                    next_token!(self, BracketClose);
-
-                                    require_operator = !require_operator;
-                                    expr = Expression::ArrayCall(Box::new(expr), Box::new(ex));
+                                    expr = self.read_array_call(expr)?;
                                 }
+
                                 expr
                             }
-                            Token::BracketOpen => {
-                                next_token!(self);
-                                let ex = self.read_expression()?;
-                                next_token!(self, BracketClose);
-
-                                Expression::ArrayCall(
-                                    Box::new(Expression::Variable(token.value.clone())),
-                                    Box::new(ex),
-                                )
-                            }
+                            Token::BracketOpen => self.read_array_call(Expression::Variable(token.value.clone()))?,
                             Token::BraceOpen => {
                                 next_token!(self);
                                 let mut params = HashMap::new();
@@ -595,6 +583,16 @@ impl Parser {
             Expression::ArrayCall(val, index) => {
                 VariableAssign::Array(Box::new(self.get_path_for_variable(*val)?), *index)
             }
+            Expression::Operator(op) => match op {
+                Operator::Dot(left, right) => {
+                    let left_var = self.get_path_for_variable(*left)?;
+                    let right_var = self.get_path_for_variable(*right)?;
+                    VariableAssign::SubVariable(Box::new(left_var), Box::new(right_var))
+                },
+                _ => return Err(ParserError::InvalidExpression(
+                    "Expected a dot operator".to_string(),
+                ))
+            }
             _ => {
                 return Err(ParserError::InvalidExpression(
                     "Expected a variable/array call".to_string(),
@@ -648,6 +646,25 @@ impl Parser {
         Ok(Expression::ArrayConstructor(values))
     }
 
+    fn read_array_call(&self, expr: Expression) -> ParserResult<Expression> {
+        let mut final_expr: Expression = expr;
+        loop {
+            next_token!(self, BracketOpen);
+            let index = self.read_expression()?;
+            next_token!(self, BracketClose);
+
+            final_expr = Expression::ArrayCall(
+                Box::new(final_expr),
+                Box::new(index),
+            );
+
+            if self.view_current()?.token != Token::BracketOpen {
+                break;
+            }
+        }
+        
+        Ok(final_expr)
+    }
     fn get_type(&self) -> ParserResult<Type> {
         let current = next_token!(self);
         let mut _type: ParserResult<Type>;
