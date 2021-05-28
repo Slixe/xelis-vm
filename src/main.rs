@@ -17,6 +17,8 @@ fn main() {
         Err(err) => panic!("Error while building program: {:?}", err),
     };
 
+    println!("{}", serde_json::to_string_pretty(&program).unwrap());
+
     let interpreter = Interpreter::new(program.clone());
     println!(
         "{:?}",

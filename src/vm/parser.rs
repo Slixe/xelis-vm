@@ -252,7 +252,7 @@ impl Parser {
     }
 
     fn read_expression(&self) -> ParserResult<Expression> {
-        let mut expr: Option<Expression> = None;
+        let mut last_expression: Option<Expression> = None;
         let mut operator: Option<&Token> = None;
         let mut state: ExpressionHelper = ExpressionHelper::Left;
 
@@ -274,7 +274,7 @@ impl Parser {
                     }
                 }
             } else {
-                let expression: Expression = match token.token {
+                let current_expression: Expression = match token.token {
                     Token::ValString => Expression::Value(Literal::String(token.value.clone())),
                     Token::ValNumber => {
                         let value: usize = match token.value.parse() {
@@ -358,7 +358,7 @@ impl Parser {
                     ExpressionHelper::Left => {
                         //only used the first time
                         state = ExpressionHelper::Operator;
-                        expr = Some(expression);
+                        last_expression = Some(current_expression);
                     }
                     ExpressionHelper::Operator => {
                         return Err(ParserError::InvalidExpression(String::from(
@@ -370,11 +370,11 @@ impl Parser {
                         if let Some(value) = operator {
                             let op = Operator::value_of(
                                 value,
-                                Box::new(expr.take().expect("Expecting a left expression")),
-                                Box::new(expression),
+                                Box::new(last_expression.take().expect("Expecting a left expression")),
+                                Box::new(current_expression),
                             )
                             .expect("No Operator found");
-                            expr = Some(Expression::Operator(op));
+                            last_expression = Some(Expression::Operator(op));
                         } else {
                             return Err(ParserError::InvalidExpression(String::from(
                                 "How is it possible ? No operator found!",
@@ -388,7 +388,7 @@ impl Parser {
             token = self.view_current()?;
         }
 
-        match expr {
+        match last_expression {
             Some(value) => Ok(value),
             None => Err(ParserError::UnexpectedToken(
                 token.clone(),
@@ -457,6 +457,10 @@ impl Parser {
             Token::BraceOpen => self.read_statement_scope()?,
             Token::Return => self.read_statement_return()?,
             Token::Let => self.read_statement_let()?,
+            Token::OperatorPlusAssign => self.read_statement_assign_with(Token::OperatorPlus, statements)?,
+            Token::OperatorMinusAssign => self.read_statement_assign_with(Token::OperatorMinus, statements)?,
+            Token::OperatorMultiplyAssign => self.read_statement_assign_with(Token::OperatorMultiply, statements)?,
+            Token::OperatorDivideAssign => self.read_statement_assign_with(Token::OperatorDivide, statements)?,
             Token::OperatorAssign => self.read_statement_assign(statements)?,
             _ => Statement::Expression(self.read_expression()?),
         };
@@ -562,10 +566,7 @@ impl Parser {
         next_token!(self, OperatorAssign);
         let last_statement = statements.remove(statements.len() - 1);
         let variable = match last_statement {
-            Statement::Expression(exp) => self.get_path_for_variable(exp)?, /*match exp {
-            Expression::Variable(var) => var,
-            _ => return Err(ParserError::InvalidExpression(format!("Expected a variable before assignation: {:?}", exp)))
-            },*/
+            Statement::Expression(exp) => self.get_path_for_variable(exp)?,
             _ => {
                 return Err(ParserError::InvalidExpression(
                     "Unexpected statement before assignation!".to_string(),
@@ -574,6 +575,33 @@ impl Parser {
         };
 
         let expression = self.read_expression()?;
+
+        Ok(Statement::Assign(AssignStatement {
+            variable,
+            expression,
+        }))
+    }
+
+    fn read_statement_assign_with(&self, token: Token, statements: &mut Vec<Statement>) -> ParserResult<Statement> {
+        self.cursor.set(self.cursor.get() + 1);
+        let last_statement = statements.remove(statements.len() - 1);
+        let variable_expression: Expression;
+        let variable = match last_statement {
+            Statement::Expression(exp) => {
+                variable_expression = exp.clone();
+                self.get_path_for_variable(exp)?
+            },
+            _ => {
+                return Err(ParserError::InvalidExpression(
+                    "Unexpected statement before assignation!".to_string(),
+                ))
+            }
+        };
+
+        let expression = match Operator::value_of(&token, Box::new(variable_expression), Box::new(self.read_expression()?)) {
+            Some(value) => Expression::Operator(value),
+            None => return Err(ParserError::NoTokenFound),
+        };
 
         Ok(Statement::Assign(AssignStatement {
             variable,

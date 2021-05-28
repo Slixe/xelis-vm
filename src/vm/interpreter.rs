@@ -5,7 +5,7 @@ use super::value_type::*;
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug)]
 pub struct Interpreter {
     constants: Scope,
     functions: HashMap<String, Function>,
@@ -109,9 +109,6 @@ impl Interpreter {
                 .structures
                 .insert(structure.name, Structure { fields });
         }
-
-
-        println!("{}", serde_json::to_string(&interpreter).unwrap());
 
         return interpreter;
     }
@@ -246,6 +243,7 @@ impl Interpreter {
                 },
                 Statement::Assign(value) => {
                     let expr_scope = scope.clone(); //TODO search another way
+
                     self.assign_value(&value.variable, &value.expression, scope, &expr_scope, false);
                 }
                 _ => {
