@@ -2,7 +2,7 @@ use super::lexer::*;
 use super::operator::*;
 use super::value_type::*;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 macro_rules! next_token {
     ($self: expr) => {{
@@ -65,7 +65,9 @@ pub struct WhileStatement {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ForStatement {
+    pub declaration: Option<DeclarationStatement>,
     pub condition: Expression,
+    pub updater: Option<AssignStatement>,
     pub body: Vec<Statement>,
 }
 
@@ -370,7 +372,9 @@ impl Parser {
                         if let Some(value) = operator {
                             let op = Operator::value_of(
                                 value,
-                                Box::new(last_expression.take().expect("Expecting a left expression")),
+                                Box::new(
+                                    last_expression.take().expect("Expecting a left expression"),
+                                ),
                                 Box::new(current_expression),
                             )
                             .expect("No Operator found");
@@ -457,10 +461,18 @@ impl Parser {
             Token::BraceOpen => self.read_statement_scope()?,
             Token::Return => self.read_statement_return()?,
             Token::Let => self.read_statement_let()?,
-            Token::OperatorPlusAssign => self.read_statement_assign_with(Token::OperatorPlus, statements)?,
-            Token::OperatorMinusAssign => self.read_statement_assign_with(Token::OperatorMinus, statements)?,
-            Token::OperatorMultiplyAssign => self.read_statement_assign_with(Token::OperatorMultiply, statements)?,
-            Token::OperatorDivideAssign => self.read_statement_assign_with(Token::OperatorDivide, statements)?,
+            Token::OperatorPlusAssign => {
+                self.read_statement_assign_with(Token::OperatorPlus, statements)?
+            }
+            Token::OperatorMinusAssign => {
+                self.read_statement_assign_with(Token::OperatorMinus, statements)?
+            }
+            Token::OperatorMultiplyAssign => {
+                self.read_statement_assign_with(Token::OperatorMultiply, statements)?
+            }
+            Token::OperatorDivideAssign => {
+                self.read_statement_assign_with(Token::OperatorDivide, statements)?
+            }
             Token::OperatorAssign => self.read_statement_assign(statements)?,
             _ => Statement::Expression(self.read_expression()?),
         };
@@ -474,7 +486,9 @@ impl Parser {
         let statements = self.read_body()?;
 
         Ok(Statement::For(ForStatement {
+            declaration: None,
             condition: condition,
+            updater: None,
             body: statements,
         }))
     }
@@ -582,7 +596,11 @@ impl Parser {
         }))
     }
 
-    fn read_statement_assign_with(&self, token: Token, statements: &mut Vec<Statement>) -> ParserResult<Statement> {
+    fn read_statement_assign_with(
+        &self,
+        token: Token,
+        statements: &mut Vec<Statement>,
+    ) -> ParserResult<Statement> {
         self.cursor.set(self.cursor.get() + 1);
         let last_statement = statements.remove(statements.len() - 1);
         let variable_expression: Expression;
@@ -590,7 +608,7 @@ impl Parser {
             Statement::Expression(exp) => {
                 variable_expression = exp.clone();
                 self.get_path_for_variable(exp)?
-            },
+            }
             _ => {
                 return Err(ParserError::InvalidExpression(
                     "Unexpected statement before assignation!".to_string(),
@@ -598,7 +616,11 @@ impl Parser {
             }
         };
 
-        let expression = match Operator::value_of(&token, Box::new(variable_expression), Box::new(self.read_expression()?)) {
+        let expression = match Operator::value_of(
+            &token,
+            Box::new(variable_expression),
+            Box::new(self.read_expression()?),
+        ) {
             Some(value) => Expression::Operator(value),
             None => return Err(ParserError::NoTokenFound),
         };

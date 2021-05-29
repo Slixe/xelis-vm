@@ -1,5 +1,7 @@
 entry main() {
     let a = 10
-    a -= 5
-    return a
+    while a > 0 {
+        println(a + "")
+        a-=1
+    }
 }

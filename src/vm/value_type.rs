@@ -1,7 +1,7 @@
 use super::lexer::*;
 use super::parser::Structure;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub enum Literal {

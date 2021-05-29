@@ -1,7 +1,7 @@
 use super::lexer::Token;
 use super::parser::Expression;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Operator {

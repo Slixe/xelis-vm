@@ -1,36 +1,57 @@
+use super::environment::*;
 use super::operator::*;
 use super::parser::*;
 use super::value_type::*;
 
 use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+
+#[derive(Debug)]
+pub enum FunctionType {
+    Custom(Function),
+    Builtin(Func),
+}
+
+impl FunctionType {
+    pub fn is_entry(&self) -> bool {
+        match self {
+            FunctionType::Custom(f) => f.entry,
+            FunctionType::Builtin(_) => false,
+        }
+    }
+
+    pub fn get_parameters_type(&self) -> Vec<&Type> {
+        match self {
+            FunctionType::Custom(f) => f.parameters.iter().map(|p| &p.value_type).collect(),
+            FunctionType::Builtin(f) => f.parameters.iter().map(|p| p).collect(),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct Interpreter {
     constants: Scope,
-    functions: HashMap<String, Function>,
+    functions: HashMap<String, FunctionType>,
     structures: HashMap<String, Structure>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug)]
 pub struct Structure {
     pub fields: HashMap<String, Type>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Array(Vec<Value>),
     Literal(Literal),
     Structure(String, Scope),
 }
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Variable {
     pub value: Value,
     pub value_type: Type,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Scope {
     variables: HashMap<String, Variable>,
 }
@@ -70,12 +91,22 @@ impl Scope {
 }
 
 impl Interpreter {
-    pub fn new(program: Program) -> Interpreter {
+    pub fn new(program: Program, environment: Environment) -> Interpreter {
         let mut interpreter = Interpreter {
             constants: Scope::new(),
             functions: HashMap::new(),
             structures: HashMap::new(),
         };
+
+        for (name, func) in environment.functions {
+            interpreter
+                .functions
+                .insert(name, FunctionType::Builtin(func));
+        }
+
+        for (name, structure) in environment.structures {
+            interpreter.structures.insert(name, structure);
+        }
 
         for constant in program.constants {
             let value =
@@ -95,12 +126,19 @@ impl Interpreter {
         }
 
         for function in program.functions {
+            if interpreter.functions.contains_key(&function.name) {
+                panic!("Function '{}' already registered!", function.name);
+            }
             interpreter
                 .functions
-                .insert(function.name.clone(), function);
+                .insert(function.name.clone(), FunctionType::Custom(function));
         }
 
         for structure in program.structures {
+            if interpreter.functions.contains_key(&structure.name) {
+                panic!("Structure '{}' already registered!", structure.name);
+            }
+
             let mut fields = HashMap::new();
             for param in structure.parameters {
                 fields.insert(param.name, param.value_type);
@@ -114,14 +152,14 @@ impl Interpreter {
     }
 
     pub fn run_function(&self, entry: String, parameters: Vec<Value>) -> Option<Value> {
-        let func: &Function = match self.functions.get(&entry) {
+        let func: &FunctionType = match self.functions.get(&entry) {
             Some(func) => func,
             None => {
-                panic!(format!("Entrypoint '{}' not found", entry));
+                panic!(format!("Function '{}' not found", entry));
             }
         };
 
-        if !func.entry {
+        if !func.is_entry() {
             panic!(format!("Function '{}' is not an entrypoint!", entry));
         }
 
@@ -135,41 +173,53 @@ impl Interpreter {
         scope: &Scope,
     ) -> Option<Value> {
         let mut values: Vec<Value> = vec![];
-
-        let func = self.functions.get(name)?;
         for e in parameters {
             values.push(self.execute_expression(&e, scope)?);
         }
 
+        let func = self.functions.get(name)?;
         self.execute_function(&func, values)
     }
 
-    fn execute_function(&self, func: &Function, values: Vec<Value>) -> Option<Value> {
-        if values.len() != func.parameters.len() {
+    fn execute_function(&self, func: &FunctionType, values: Vec<Value>) -> Option<Value> {
+        let types = func.get_parameters_type();
+        if values.len() != types.len() {
             panic!("Parameters / values length mismatch");
         }
 
-        let mut scope = self.constants.clone();
         let mut i = 0;
-        for value in values {
-            let param = &func.parameters[i];
-            if self.get_type_of_value(&value) != param.value_type {
+        while i < types.len() {
+            let value_type = types[i];
+            let value = &values[i];
+            if self.get_type_of_value(value) != *value_type {
                 panic!(
                     "Invalid value type for parameter {} expected {:?} found {:?}!",
-                    param.name, param.value_type, value
+                    i, value_type, value
                 );
             }
-            scope.register_variable(
-                &param.name,
-                Variable {
-                    value_type: param.value_type.clone(),
-                    value,
-                },
-            );
-            i += 1;
+            i = i + 1;
         }
 
-        self.execute_statements(&func.statements, &mut scope)
+        match func {
+            FunctionType::Builtin(f) => (f.execution)(values),
+            FunctionType::Custom(f) => {
+                let mut scope = self.constants.clone();
+                let mut i = 0;
+                for value in values {
+                    let param = &f.parameters[i];
+                    scope.register_variable(
+                        &param.name,
+                        Variable {
+                            value_type: param.value_type.clone(),
+                            value,
+                        },
+                    );
+                    i += 1;
+                }
+
+                self.execute_statements(&f.statements, &mut scope)
+            }
+        }
     }
 
     fn execute_statements(&self, statements: &Vec<Statement>, scope: &mut Scope) -> Option<Value> {
@@ -243,8 +293,30 @@ impl Interpreter {
                 },
                 Statement::Assign(value) => {
                     let expr_scope = scope.clone(); //TODO search another way
-
-                    self.assign_value(&value.variable, &value.expression, scope, &expr_scope, false);
+                    self.assign_value(
+                        &value.variable,
+                        &value.expression,
+                        scope,
+                        &expr_scope,
+                        false,
+                    );
+                }
+                Statement::While(value) => {
+                    while match self
+                        .execute_expression_and_expect_literal(&value.condition, scope)?
+                    {
+                        Literal::Boolean(v) => v,
+                        _ => panic!("Expected a valid condition"),
+                    } {
+                        if let Some(v) = self.execute_statements(&value.body, scope) {
+                            return Some(v);
+                        }
+                    }
+                }
+                Statement::Scope(value) => {
+                    if let Some(v) = self.execute_statements(&value.body, scope) {
+                        return Some(v);
+                    }
                 }
                 _ => {
                     panic!(format!("Statement not implemented: {:?}", statement));
@@ -295,10 +367,13 @@ impl Interpreter {
             VariableAssign::Variable(v) => {
                 if return_var {
                     let var = scope.get_mut_variable(v)?;
-                    return Some((&mut var.value, &var.value_type))
+                    return Some((&mut var.value, &var.value_type));
                 }
-                let val =
-                    self.execute_expression_and_validate_type(value, expr_scope, scope.get_type(&v)?)?;
+                let val = self.execute_expression_and_validate_type(
+                    value,
+                    expr_scope,
+                    scope.get_type(&v)?,
+                )?;
                 scope.set_variable_value(v, val);
             }
             VariableAssign::Array(v, index) => {
@@ -316,11 +391,11 @@ impl Interpreter {
                         };
 
                         if return_var {
-                            return Some((&mut values[i], value_type))
+                            return Some((&mut values[i], value_type));
                         }
 
-                        let val =
-                            self.execute_expression_and_validate_type(value, expr_scope, value_type)?;
+                        let val = self
+                            .execute_expression_and_validate_type(value, expr_scope, value_type)?;
 
                         std::mem::replace(&mut values[i], val)
                     }
@@ -384,7 +459,10 @@ impl Interpreter {
     ) -> Option<Literal> {
         match self.execute_expression(expr, scope)? {
             Value::Literal(v) => Some(v),
-            _ => panic!("Only literal are allowed! Expression: {}", serde_json::to_string_pretty(&expr).unwrap()),
+            _ => panic!(
+                "Only literal are allowed! Expression: {}",
+                serde_json::to_string_pretty(&expr).unwrap()
+            ),
         }
     }
 

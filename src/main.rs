@@ -1,9 +1,16 @@
 mod vm;
 
 use std::fs;
+use vm::environment::*;
 use vm::interpreter::*;
 use vm::lexer::*;
 use vm::parser::*;
+use vm::value_type::Type;
+
+fn println_func(values: Vec<Value>) -> Option<Value> {
+    println!("{:?}", values);
+    None
+}
 
 fn main() {
     let code: String =
@@ -17,14 +24,18 @@ fn main() {
         Err(err) => panic!("Error while building program: {:?}", err),
     };
 
-    println!("{}", serde_json::to_string_pretty(&program).unwrap());
+    let mut env = Environment::new();
+    env.functions.insert(
+        String::from("println"),
+        Func {
+            parameters: vec![Type::String],
+            execution: println_func,
+        },
+    );
 
-    let interpreter = Interpreter::new(program.clone());
+    let interpreter = Interpreter::new(program.clone(), env);
     println!(
         "{:?}",
-        interpreter.run_function(
-            String::from("main"),
-            vec![/*Literal::Number(1), Literal::Number(2)*/]
-        )
+        interpreter.run_function(String::from("main"), vec![])
     );
 }

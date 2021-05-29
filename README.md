@@ -11,11 +11,26 @@ File extension is .xel
 
 ## Roadmap
 
+### Main Parts
  - [x] Lexer
  - [x] Parser
  - [ ] Verifier (type checking...)
  - [x] Interpreter 
  - [ ] Documentation
+
+### Ideas 
+- Implement operator priority logic
+- Make debug messages prettier
+- Implement the following statements:
+  - for / for each
+  - break
+  - continue
+  - scope
+
+- Make sure that variables added in one scope cannot be used in another.
+- Optimize the code to avoid cloning values.
+- Realize the standard library
+- Improve the way to implement the builtin functions (automatic parsing from the Value enum to the native rust values and vice versa?)
 
 ## How it works
 
