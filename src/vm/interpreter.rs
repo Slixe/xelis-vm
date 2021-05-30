@@ -146,7 +146,7 @@ impl Interpreter {
 
         for constant in program.constants {
             let value =
-                match interpreter.execute_expression(&constant.value, &interpreter.constants) {
+                match interpreter.execute_expression(&constant.value, &mut interpreter.constants.clone()) {
                     Some(v) => v,
                     None => panic!("No value found for this constant"),
                 };
@@ -206,7 +206,7 @@ impl Interpreter {
         &self,
         name: &String,
         parameters: &Vec<Expression>,
-        scope: &Scope,
+        scope: &mut Scope,
     ) -> Option<Value> {
         let mut values: Vec<Value> = vec![];
         for e in parameters {
@@ -259,7 +259,7 @@ impl Interpreter {
         }
     }
 
-    fn execute_function_type(&self, val: &mut Value, function_name: &String, parameters: &Vec<Expression>, scope: &Scope) -> Option<Value> {
+    fn execute_function_type(&self, val: &mut Value, function_name: &String, parameters: &Vec<Expression>, scope: &mut Scope) -> Option<Value> {
         let value_type = self.get_type_of_value(&val);
         match self.type_fuctions.get(&value_type) {
             Some(map) => match map.get(function_name) {
@@ -361,12 +361,12 @@ impl Interpreter {
                     None => {}
                 },
                 Statement::Assign(value) => {
-                    let expr_scope = scope.clone(); //TODO search another way
+                    let mut expr_scope = scope.clone(); //TODO search another way
                     self.assign_value(
                         &value.variable,
                         &value.expression,
                         scope,
-                        &expr_scope
+                        &mut expr_scope
                     );
                 }
                 Statement::While(value) => {
@@ -422,7 +422,7 @@ impl Interpreter {
         }
     }
 
-    fn execute_expression_and_expect_number(&self, expression: &Expression, scope: &Scope) -> usize {
+    fn execute_expression_and_expect_number(&self, expression: &Expression, scope: &mut Scope) -> usize {
         match self.execute_expression_and_expect_literal(expression, scope) {
             Some(v) => match v {
                 Literal::Number(n) => n,
@@ -457,7 +457,7 @@ impl Interpreter {
                             Type::Array(ref v) => v,
                             _ => panic!("Invalid type for array call"),
                         };
-                        return Some((&mut values[i], value_type)) //TODO verify if type is tuple.1 is same as values[i]
+                        return Some((&mut values[i], value_type))
                     }
                     val => panic!("Expected a array value but got {:?}", val)
                 }
@@ -465,7 +465,7 @@ impl Interpreter {
         }
     }
 
-    fn assign_value(&self, path: &VariablePath, expression_value: &Expression, scope: &mut Scope, expression_scope: &Scope) {
+    fn assign_value(&self, path: &VariablePath, expression_value: &Expression, scope: &mut Scope, expression_scope: &mut Scope) {
         let value = match self.execute_expression(&expression_value, expression_scope) {
             Some(v) => v,
             None => panic!("No value returned from this expression!")
@@ -487,7 +487,7 @@ impl Interpreter {
         &self,
         left: &Expression,
         right: &Expression,
-        scope: &Scope,
+        scope: &mut Scope,
     ) -> Option<(usize, usize)> {
         if let (Literal::Number(left_val), Literal::Number(right_val)) = (
             self.execute_expression_and_expect_literal(left, scope)?,
@@ -503,7 +503,7 @@ impl Interpreter {
         &self,
         left: &Expression,
         right: &Expression,
-        scope: &Scope,
+        scope: &mut Scope,
     ) -> Option<(bool, bool)> {
         if let (Literal::Boolean(left_val), Literal::Boolean(right_val)) = (
             self.execute_expression_and_expect_literal(left, scope)?,
@@ -518,7 +518,7 @@ impl Interpreter {
     fn execute_expression_and_expect_literal(
         &self,
         expr: &Expression,
-        scope: &Scope,
+        scope: &mut Scope,
     ) -> Option<Literal> {
         match self.execute_expression(expr, scope)? {
             Value::Literal(v) => Some(v),
@@ -532,7 +532,7 @@ impl Interpreter {
     fn execute_expression_and_validate_type(
         &self,
         expr: &Expression,
-        scope: &Scope,
+        scope: &mut Scope,
         value_type: &Type,
     ) -> Option<Value> {
         let value = self.execute_expression(expr, scope)?;
@@ -547,7 +547,7 @@ impl Interpreter {
         Some(value)
     }
 
-    fn execute_expression(&self, expr: &Expression, scope: &Scope) -> Option<Value> {
+    fn execute_expression(&self, expr: &Expression, scope: &mut Scope) -> Option<Value> {
         match expr {
             Expression::Value(val) => Some(Value::Literal(val.clone())),
             Expression::Variable(val) => match scope.get_variable(val) {
@@ -610,20 +610,20 @@ impl Interpreter {
             Expression::Operator(operator) => {
                 match operator {
                     Operator::Dot(left, right) => match self.execute_expression(left, scope)? {
-                        Value::Structure(_, values) => self.execute_expression(right, &values),
+                        Value::Structure(_, ref mut values) => self.execute_expression(right, values),
                         ref mut val => match right.as_ref() {
                             Expression::FunctionCall(name, params) => {
-                                /*let path = match VariablePath::get_path_for_variable(*left.clone()) {
+                                let path = match VariablePath::get_path_for_variable(*left.clone()) {
                                     Ok(v) => v,
                                     Err(err) => panic!("No dynamic variable path found for this expression, error: {:?}", err)
                                 };
-                                let (var_value, _) = match self.get_variable(&path, scope) { //scope not mutable TODO
+                                let mut cloned_scope = scope.clone();
+                                let tuple = match self.get_variable(&path, scope) { //scope not mutable TODO
                                     Some(v) => v,
                                     None => panic!("No variable found for path '{:?}'", path)
-                                };
+                                }; 
 
-                                self.execute_function_type(var_value, name, params, scope)*/
-                                None
+                                self.execute_function_type(tuple.0, name, params, &mut cloned_scope)
                             }
                             v => panic!("Got '{:?}' called on '{:?}', what is it supposed to do ?", v, val),
                         }
