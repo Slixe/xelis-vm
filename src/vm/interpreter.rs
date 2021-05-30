@@ -128,23 +128,10 @@ impl Scope {
         self.variables.get(name)
     }
 
-    pub fn get_type(&self, name: &str) -> Option<&Type> {
-        Some(&self.variables.get(name)?.value_type)
-    }
-
     pub fn register_variable(&mut self, name: &str, value: Variable) {
         if let Some(v) = self.variables.insert(name.to_string(), value) {
             panic!("Variable '{}' already exist with value: {:?}", name, v);
         }
-    }
-
-    pub fn set_variable_value(&mut self, name: &str, value: Value) {
-        let var: &mut Variable = match self.variables.get_mut(name) {
-            Some(v) => v,
-            None => panic!("Trying to set value on a inexistant variable"),
-        };
-
-        var.value = value;
     }
 }
 
@@ -466,11 +453,14 @@ impl Interpreter {
 
                 match tuple.0 {
                     Value::Array(ref mut values) => {
-                        return Some((&mut values[i], tuple.1)) //TODO verify if type is tuple.1 is same as values[i]
+                        let value_type = match tuple.1 {
+                            Type::Array(ref v) => v,
+                            _ => panic!("Invalid type for array call"),
+                        };
+                        return Some((&mut values[i], value_type)) //TODO verify if type is tuple.1 is same as values[i]
                     }
-                    _ => {}
-                };
-                None
+                    val => panic!("Expected a array value but got {:?}", val)
+                }
             }
         }
     }
@@ -484,6 +474,12 @@ impl Interpreter {
             Some(v) => v,
             None => panic!("No variable found for this path: {:?}", path)
         };
+
+        let value_type = self.get_type_of_value(&value);
+        if *var_type != value_type {
+            panic!("Invalid type of value for this variable. Got {:?} but expected {:?}", value_type, var_type);
+        }
+
         *var_value = value;
     }
 
@@ -617,8 +613,17 @@ impl Interpreter {
                         Value::Structure(_, values) => self.execute_expression(right, &values),
                         ref mut val => match right.as_ref() {
                             Expression::FunctionCall(name, params) => {
-                                let path = VariablePath::get_path_for_variable(*left.clone());
-                                self.execute_function_type(val, name, params, scope) //TODO update current value
+                                /*let path = match VariablePath::get_path_for_variable(*left.clone()) {
+                                    Ok(v) => v,
+                                    Err(err) => panic!("No dynamic variable path found for this expression, error: {:?}", err)
+                                };
+                                let (var_value, _) = match self.get_variable(&path, scope) { //scope not mutable TODO
+                                    Some(v) => v,
+                                    None => panic!("No variable found for path '{:?}'", path)
+                                };
+
+                                self.execute_function_type(var_value, name, params, scope)*/
+                                None
                             }
                             v => panic!("Got '{:?}' called on '{:?}', what is it supposed to do ?", v, val),
                         }
