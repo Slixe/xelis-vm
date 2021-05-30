@@ -131,6 +131,7 @@ impl Scope {
     pub fn get_type(&self, name: &str) -> Option<&Type> {
         Some(&self.variables.get(name)?.value_type)
     }
+
     pub fn register_variable(&mut self, name: &str, value: Variable) {
         if let Some(v) = self.variables.insert(name.to_string(), value) {
             panic!("Variable '{}' already exist with value: {:?}", name, v);
@@ -378,8 +379,7 @@ impl Interpreter {
                         &value.variable,
                         &value.expression,
                         scope,
-                        &expr_scope,
-                        false,
+                        &expr_scope
                     );
                 }
                 Statement::While(value) => {
@@ -435,70 +435,56 @@ impl Interpreter {
         }
     }
 
-    //TODO rework this function
-    fn assign_value<'a>(
-        &self,
-        var: &VariableAssign,
-        value: &Expression,
-        scope: &'a mut Scope,
-        expr_scope: &Scope,
-        return_var: bool,
-    ) -> Option<(&'a mut Value, &'a Type)> {
-        match var {
-            VariableAssign::Variable(v) => {
-                if return_var {
-                    let var = scope.get_mut_variable(v)?;
-                    return Some((&mut var.value, &var.value_type));
-                }
-                let val = self.execute_expression_and_validate_type(
-                    value,
-                    expr_scope,
-                    scope.get_type(&v)?,
-                )?;
-                scope.set_variable_value(v, val);
-            }
-            VariableAssign::Array(v, index) => {
-                let i = match self.execute_expression_and_expect_literal(index, expr_scope)? {
-                    Literal::Number(val) => val,
-                    _ => panic!("Invalid index for array call"),
-                };
+    fn execute_expression_and_expect_number(&self, expression: &Expression, scope: &Scope) -> usize {
+        match self.execute_expression_and_expect_literal(expression, scope) {
+            Some(v) => match v {
+                Literal::Number(n) => n,
+                literal => panic!("Expected a number but got {:?}", literal)
+            },
+            None => panic!("No value found! Expected a number!")
+        }
+    }
 
-                let var = self.assign_value(v, value, scope, expr_scope, true)?;
-                match var.0 {
-                    Value::Array(ref mut values) => {
-                        let value_type = match var.1 {
-                            Type::Array(ref v) => v,
-                            _ => panic!("Invalid type for array call"),
-                        };
-
-                        if return_var {
-                            return Some((&mut values[i], value_type));
-                        }
-
-                        let val = self
-                            .execute_expression_and_validate_type(value, expr_scope, value_type)?;
-
-                        std::mem::replace(&mut values[i], val)
-                    }
-                    _ => panic!("How is it possible ? Expected a Array value"),
-                };
-            }
-            VariableAssign::SubVariable(left, right) => {
-                let left_var = match self.assign_value(left, value, scope, expr_scope, true) {
-                    Some(v) => v,
-                    None => panic!("Variable not found! '{:?}'", left),
-                };
-
+    fn get_variable<'a>(&self, path: &VariablePath, scope: &'a mut Scope) -> Option<(&'a mut Value, &'a Type)> {
+        match path {
+            VariablePath::Variable(v) => {
+                let var = scope.get_mut_variable(v)?;
+                Some((&mut var.value, &var.value_type))
+            },
+            VariablePath::SubVariable(left, right) => {
+                let left_var = self.get_variable(left, scope)?;
                 match left_var.0 {
                     Value::Structure(_, ref mut values) => {
-                        return self.assign_value(right, value, values, expr_scope, return_var)
+                        self.get_variable(right, values)
                     }
                     _ => panic!("Expected a Structure value, how is it possible ?"),
                 }
             }
-        };
+            VariablePath::Array(v, index) => {
+                let i = self.execute_expression_and_expect_number(index, scope);
+                let tuple = self.get_variable(v, scope)?;
 
-        None
+                match tuple.0 {
+                    Value::Array(ref mut values) => {
+                        return Some((&mut values[i], tuple.1)) //TODO verify if type is tuple.1 is same as values[i]
+                    }
+                    _ => {}
+                };
+                None
+            }
+        }
+    }
+
+    fn assign_value(&self, path: &VariablePath, expression_value: &Expression, scope: &mut Scope, expression_scope: &Scope) {
+        let value = match self.execute_expression(&expression_value, expression_scope) {
+            Some(v) => v,
+            None => panic!("No value returned from this expression!")
+        };
+        let (var_value, var_type) = match self.get_variable(path, scope) {
+            Some(v) => v,
+            None => panic!("No variable found for this path: {:?}", path)
+        };
+        *var_value = value;
     }
 
     fn get_numbers(
@@ -631,9 +617,10 @@ impl Interpreter {
                         Value::Structure(_, values) => self.execute_expression(right, &values),
                         ref mut val => match right.as_ref() {
                             Expression::FunctionCall(name, params) => {
-                                self.execute_function_type(val, name, params, scope)
+                                let path = VariablePath::get_path_for_variable(*left.clone());
+                                self.execute_function_type(val, name, params, scope) //TODO update current value
                             }
-                            v => panic!("Found '{:?}' called on '{:?}', what is it supposed to do ?", v, val),
+                            v => panic!("Got '{:?}' called on '{:?}', what is it supposed to do ?", v, val),
                         }
                     },
                     Operator::OperatorAnd(left, right) => {

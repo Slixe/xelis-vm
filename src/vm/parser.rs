@@ -85,15 +85,45 @@ pub struct DeclarationStatement {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AssignStatement {
-    pub variable: VariableAssign,
+    pub variable: VariablePath,
     pub expression: Expression,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum VariableAssign {
+pub enum VariablePath {
     Variable(String),
-    Array(Box<VariableAssign>, Expression),
-    SubVariable(Box<VariableAssign>, Box<VariableAssign>),
+    Array(Box<VariablePath>, Expression),
+    SubVariable(Box<VariablePath>, Box<VariablePath>),
+}
+
+impl VariablePath {
+    pub fn get_path_for_variable(expression: Expression) -> ParserResult<VariablePath> {
+        let res = match expression {
+            Expression::Variable(v) => VariablePath::Variable(v),
+            Expression::ArrayCall(val, index) => {
+                VariablePath::Array(Box::new(VariablePath::get_path_for_variable(*val)?), *index)
+            }
+            Expression::Operator(op) => match op {
+                Operator::Dot(left, right) => {
+                    let left_var = VariablePath::get_path_for_variable(*left)?;
+                    let right_var = VariablePath::get_path_for_variable(*right)?;
+                    VariablePath::SubVariable(Box::new(left_var), Box::new(right_var))
+                }
+                _ => {
+                    return Err(ParserError::InvalidExpression(
+                        "Expected a dot operator".to_string(),
+                    ))
+                }
+            },
+            _ => {
+                return Err(ParserError::InvalidExpression(
+                    "Expected a variable/array call".to_string(),
+                ))
+            }
+        };
+
+        Ok(res)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -580,7 +610,7 @@ impl Parser {
         next_token!(self, OperatorAssign);
         let last_statement = statements.remove(statements.len() - 1);
         let variable = match last_statement {
-            Statement::Expression(exp) => self.get_path_for_variable(exp)?,
+            Statement::Expression(exp) => VariablePath::get_path_for_variable(exp)?,
             _ => {
                 return Err(ParserError::InvalidExpression(
                     "Unexpected statement before assignation!".to_string(),
@@ -607,7 +637,7 @@ impl Parser {
         let variable = match last_statement {
             Statement::Expression(exp) => {
                 variable_expression = exp.clone();
-                self.get_path_for_variable(exp)?
+                VariablePath::get_path_for_variable(exp)?
             }
             _ => {
                 return Err(ParserError::InvalidExpression(
@@ -629,34 +659,6 @@ impl Parser {
             variable,
             expression,
         }))
-    }
-
-    fn get_path_for_variable(&self, expression: Expression) -> ParserResult<VariableAssign> {
-        let res = match expression {
-            Expression::Variable(v) => VariableAssign::Variable(v),
-            Expression::ArrayCall(val, index) => {
-                VariableAssign::Array(Box::new(self.get_path_for_variable(*val)?), *index)
-            }
-            Expression::Operator(op) => match op {
-                Operator::Dot(left, right) => {
-                    let left_var = self.get_path_for_variable(*left)?;
-                    let right_var = self.get_path_for_variable(*right)?;
-                    VariableAssign::SubVariable(Box::new(left_var), Box::new(right_var))
-                }
-                _ => {
-                    return Err(ParserError::InvalidExpression(
-                        "Expected a dot operator".to_string(),
-                    ))
-                }
-            },
-            _ => {
-                return Err(ParserError::InvalidExpression(
-                    "Expected a variable/array call".to_string(),
-                ))
-            }
-        };
-
-        Ok(res)
     }
 
     fn read_parameters(&self) -> ParserResult<Vec<Parameter>> {

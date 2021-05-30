@@ -18,9 +18,9 @@ fn array_len(current_value: &mut Value, _: Vec<Value>) -> Option<Value> {
     }
 }
 
-fn array_push(current_value: &mut Value, values: Vec<Value>) -> Option<Value> {
+fn array_push(current_value: &mut Value, parameters: Vec<Value>) -> Option<Value> {
     if let Value::Array(ref mut values) = current_value {
-        values.push(values[0].clone());
+        values.push(parameters[0].clone());
     }
     None
 }
@@ -42,7 +42,7 @@ fn main() {
     let mut env = Environment::new();
     env.bind_native_function(String::from("println"), println_func, vec![Type::String]); //print in terminal a string
     env.bind_native_function_on_type(Type::Array(Box::new(Type::Number)), String::from("len"), array_len, vec![]); //return the len of array
-    env.bind_native_function_on_type(Type::Array(Box::new(Type::Number)), String::from("push"), array_len, vec![Type::Number]); //return the len of array
+    env.bind_native_function_on_type(Type::Array(Box::new(Type::Number)), String::from("push"), array_push, vec![Type::Number]); //add value in array
 
     let interpreter = Interpreter::new(program.clone(), env);
     println!(

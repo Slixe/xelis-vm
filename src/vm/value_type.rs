@@ -12,11 +12,10 @@ pub enum Literal {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
-pub enum Type {
+pub enum Type { //TODO Implement "Any" Properly
     String,
     Number,
     Boolean,
-    Any,
     Structure(String),
     Array(Box<Type>),
 }
