@@ -1,21 +1,77 @@
-use super::environment::*;
 use super::operator::*;
 use super::parser::*;
 use super::value_type::*;
 
 use std::collections::HashMap;
 
+pub struct Environment {
+    pub scope: Scope,
+    pub structures: HashMap<String, Structure>,
+    pub functions: HashMap<String, FunctionType>,
+    pub type_functions: HashMap<Type, HashMap<String, FunctionType>>
+}
+
 #[derive(Debug)]
+pub struct Func {
+    pub parameters: Vec<Type>,
+    pub execution: fn(Vec<Value>) -> Option<Value>,
+}
+
+pub struct FuncType {
+    pub parameters: Vec<Type>,
+    pub execution: fn(&mut Value, Vec<Value>) -> Option<Value>,
+}
+
+impl Environment {
+    pub fn new() -> Environment {
+        Environment {
+            scope: Scope::new(),
+            structures: HashMap::new(),
+            functions: HashMap::new(),
+            type_functions: HashMap::new(),
+        }
+    }
+
+    pub fn bind_native_function(&mut self, name: String, function: fn(Vec<Value>) -> Option<Value>,  parameters: Vec<Type>) {
+        if let Some(_) = self.functions.insert(name, FunctionType::Builtin(Func {
+            parameters: parameters,
+            execution: function
+        })) {
+            panic!("Function already exist!");
+        }
+    }
+
+    pub fn bind_native_function_on_type(&mut self, value_type: Type, name: String, function: fn(&mut Value, Vec<Value>) -> Option<Value>,  parameters: Vec<Type>) {
+        let map: &mut HashMap<String, FunctionType> = match self.type_functions.get_mut(&value_type) {
+            Some(v) => v,
+            None => {
+                self.type_functions.insert(value_type.clone(), HashMap::new());
+                match self.type_functions.get_mut(&value_type) {
+                    Some(v) => v,
+                    None => panic!("How is it possible ? Map is inserted on previous line!")
+                }
+            }
+        };
+        if let Some(_) = map.insert(name, FunctionType::Type(FuncType {
+            parameters: parameters,
+            execution: function
+        })) {
+            panic!("Function already exist!");
+        }
+    }
+}
+
 pub enum FunctionType {
     Custom(Function),
     Builtin(Func),
+    Type(FuncType),
 }
 
 impl FunctionType {
     pub fn is_entry(&self) -> bool {
         match self {
             FunctionType::Custom(f) => f.entry,
-            FunctionType::Builtin(_) => false,
+            _ => false,
         }
     }
 
@@ -23,15 +79,16 @@ impl FunctionType {
         match self {
             FunctionType::Custom(f) => f.parameters.iter().map(|p| &p.value_type).collect(),
             FunctionType::Builtin(f) => f.parameters.iter().map(|p| p).collect(),
+            FunctionType::Type(f) => f.parameters.iter().map(|p| p).collect()
         }
     }
 }
 
-#[derive(Debug)]
 pub struct Interpreter {
     constants: Scope,
     functions: HashMap<String, FunctionType>,
     structures: HashMap<String, Structure>,
+    type_fuctions: HashMap<Type, HashMap<String, FunctionType>>
 }
 
 #[derive(Debug)]
@@ -93,20 +150,11 @@ impl Scope {
 impl Interpreter {
     pub fn new(program: Program, environment: Environment) -> Interpreter {
         let mut interpreter = Interpreter {
-            constants: Scope::new(),
-            functions: HashMap::new(),
-            structures: HashMap::new(),
+            constants: environment.scope,
+            functions: environment.functions,
+            structures: environment.structures,
+            type_fuctions: environment.type_functions
         };
-
-        for (name, func) in environment.functions {
-            interpreter
-                .functions
-                .insert(name, FunctionType::Builtin(func));
-        }
-
-        for (name, structure) in environment.structures {
-            interpreter.structures.insert(name, structure);
-        }
 
         for constant in program.constants {
             let value =
@@ -219,6 +267,39 @@ impl Interpreter {
 
                 self.execute_statements(&f.statements, &mut scope)
             }
+            _ => panic!("Invalid function type")
+        }
+    }
+
+    fn execute_function_type(&self, val: &mut Value, function_name: &String, parameters: &Vec<Expression>, scope: &Scope) -> Option<Value> {
+        let value_type = self.get_type_of_value(&val);
+        match self.type_fuctions.get(&value_type) {
+            Some(map) => match map.get(function_name) {
+                Some(v) => match v {
+                        FunctionType::Type(f) => {
+                            let mut values: Vec<Value> = vec![];
+                            if f.parameters.len() != parameters.len() {
+                                panic!("Parameters / values length mismatch");
+                            }
+
+                            let mut i = 0;
+                            while i < f.parameters.len() {
+                                let value = self.execute_expression(&parameters[i], scope)?;
+                                let value_type = self.get_type_of_value(&value);
+                                if value_type != f.parameters[i] {
+                                    panic!("Invalid value type for parameter {}, expected {:?} found {:?}", i, f.parameters[i], value_type);
+                                }
+                                values.push(value);
+                                i += 1;
+                            }
+
+                            (f.execution)(val, values)
+                        }
+                        _ => panic!("Invalid function type")
+                },
+                None => panic!("No function named '{}' found for type {:?} !", function_name, value_type)
+            },
+            None => panic!("No function found for type {:?} !", value_type)
         }
     }
 
@@ -548,7 +629,12 @@ impl Interpreter {
                 match operator {
                     Operator::Dot(left, right) => match self.execute_expression(left, scope)? {
                         Value::Structure(_, values) => self.execute_expression(right, &values),
-                        _ => panic!("not a structure, where are you trying to use dot operator ?"),
+                        ref mut val => match right.as_ref() {
+                            Expression::FunctionCall(name, params) => {
+                                self.execute_function_type(val, name, params, scope)
+                            }
+                            v => panic!("Found '{:?}' called on '{:?}', what is it supposed to do ?", v, val),
+                        }
                     },
                     Operator::OperatorAnd(left, right) => {
                         if let Some((left, right)) = self.get_booleans(left, right, scope) {

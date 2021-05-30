@@ -11,11 +11,12 @@ pub enum Literal {
     Boolean(bool),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Type {
     String,
     Number,
     Boolean,
+    Any,
     Structure(String),
     Array(Box<Type>),
 }

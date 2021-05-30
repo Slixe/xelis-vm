@@ -1,7 +1,8 @@
 entry main() {
-    let a = 10
-    while a > 0 {
-        println(a + "")
-        a-=1
+    let array = [10, 20, 30]
+    while array[0] > 0 {
+        array.push(0)
+        println(array.len() + "")
+        array[0] -= 1
     }
 }

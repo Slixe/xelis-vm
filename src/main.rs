@@ -1,14 +1,27 @@
 mod vm;
 
 use std::fs;
-use vm::environment::*;
 use vm::interpreter::*;
 use vm::lexer::*;
 use vm::parser::*;
-use vm::value_type::Type;
+use vm::value_type::{Type, Literal};
 
 fn println_func(values: Vec<Value>) -> Option<Value> {
     println!("{:?}", values);
+    None
+}
+
+fn array_len(current_value: &mut Value, _: Vec<Value>) -> Option<Value> {
+    match current_value {
+        Value::Array(values) => Some(Value::Literal(Literal::Number(values.len()))),
+        _ => panic!("Should not happen!")
+    }
+}
+
+fn array_push(current_value: &mut Value, values: Vec<Value>) -> Option<Value> {
+    if let Value::Array(ref mut values) = current_value {
+        values.push(values[0].clone());
+    }
     None
 }
 
@@ -24,14 +37,12 @@ fn main() {
         Err(err) => panic!("Error while building program: {:?}", err),
     };
 
+    println!("{}", serde_json::to_string_pretty(&program).unwrap());
+
     let mut env = Environment::new();
-    env.functions.insert(
-        String::from("println"),
-        Func {
-            parameters: vec![Type::String],
-            execution: println_func,
-        },
-    );
+    env.bind_native_function(String::from("println"), println_func, vec![Type::String]); //print in terminal a string
+    env.bind_native_function_on_type(Type::Array(Box::new(Type::Number)), String::from("len"), array_len, vec![]); //return the len of array
+    env.bind_native_function_on_type(Type::Array(Box::new(Type::Number)), String::from("push"), array_len, vec![Type::Number]); //return the len of array
 
     let interpreter = Interpreter::new(program.clone(), env);
     println!(
