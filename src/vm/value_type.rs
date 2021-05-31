@@ -2,6 +2,7 @@ use super::lexer::*;
 use super::parser::Structure;
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub enum Literal {
@@ -21,7 +22,7 @@ pub enum Type { //TODO Implement "Any" Properly
 }
 
 impl Type {
-    pub fn get_type(structures: &Vec<Structure>, value: &TokenValue) -> Option<Type> {
+    pub fn get_type(structures: &HashMap<String, Structure>, value: &TokenValue) -> Option<Type> {
         let _type = match value.token {
             Token::ValNumber => Type::Number,
             Token::ValString => Type::String,
@@ -31,10 +32,8 @@ impl Type {
                 "number" => Type::Number,
                 "bool" => Type::Boolean,
                 _ => {
-                    for structure in structures {
-                        if structure.name == value.value {
-                            return Some(Type::Structure(value.value.clone()));
-                        }
+                    if structures.contains_key(&value.value) {
+                        return Some(Type::Structure(value.value.clone()));
                     }
 
                     return None;

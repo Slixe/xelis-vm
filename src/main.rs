@@ -27,7 +27,7 @@ fn array_push(current_value: &mut Value, parameters: Vec<Value>) -> Option<Value
 
 fn main() {
     let code: String =
-        fs::read_to_string("priority.xel").expect("Something went wrong reading the file");
+        fs::read_to_string("tests.xel").expect("Something went wrong reading the file");
     let lexer = Lexer::new(code);
     let tokens: Vec<TokenValue> = lexer.get();
 
@@ -44,9 +44,12 @@ fn main() {
     env.bind_native_function_on_type(Type::Array(Box::new(Type::Number)), String::from("len"), array_len, vec![]); //return the len of array
     env.bind_native_function_on_type(Type::Array(Box::new(Type::Number)), String::from("push"), array_push, vec![Type::Number]); //add value in array
 
-    let interpreter = Interpreter::new(program.clone(), env);
-    println!(
-        "{:?}",
-        interpreter.run_function(String::from("main"), vec![])
-    );
+    for func in vec!["for_each", "compute_with_constant", "while_test", "struct_example", "function_call_example", "condition_example"] {
+        println!("executing entrypoint: {}", func);
+        let interpreter = Interpreter::new(program.clone(), env.clone());
+        println!(
+            "Value returned {:?}",
+            interpreter.run_function(func.to_string(), vec![])
+        );
+    }
 }

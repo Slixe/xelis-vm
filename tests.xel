@@ -1,0 +1,67 @@
+entry for_each() {
+    let array = [10, 20, 30]
+    array.push(40)  //array.push(value) is a function registered on type Array.
+    println("Array len: " + (array.len()))
+    for a in array { //for each on Array
+        println(a + "") //println is a native function
+    }
+}
+
+const GLOBAL_RATE: number = 5 * 15 * 10
+
+entry compute_with_constant() {
+    println("Global rate: " + GLOBAL_RATE)
+}
+
+entry while_test() {
+    let i = 10
+    while i > 0 {
+        println(i + "")
+        i -= 1
+    }
+}
+
+struct Order {
+    price: number,
+    quantity: number
+}
+
+struct User {
+    username: string,
+    orders: []Order //Order have to be registered BEFORE User struct
+}
+
+entry struct_example() {
+    let orders: []Order = [Order {
+        price: 3,
+        quantity: 140 
+    }]
+
+    let user = User {
+        username: "Slixe",
+        orders: orders
+    }
+    println("Total cost ($): " + ((user.orders[0].price) * (user.orders[0].quantity))) //TODO make the parentheses optional
+}
+
+func bar(a: number): number {
+    return a * 10
+}
+
+func foo(): number {
+    return bar(23) + 7 - 3
+}
+
+entry function_call_example() { //only func declared with "entry" are public function and can be called outside the program
+    println("Result: " + foo())
+}
+
+entry condition_example() {
+    let value = foo() == 234
+
+    if value {
+        println("That's true!")
+    } else {
+        println("well, no.")
+    }
+}

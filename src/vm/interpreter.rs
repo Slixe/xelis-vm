@@ -4,6 +4,7 @@ use super::value_type::*;
 
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct Environment {
     pub scope: Scope,
     pub structures: HashMap<String, Structure>,
@@ -11,12 +12,13 @@ pub struct Environment {
     pub type_functions: HashMap<Type, HashMap<String, FunctionType>>
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Func {
     pub parameters: Vec<Type>,
     pub execution: fn(Vec<Value>) -> Option<Value>,
 }
 
+#[derive(Clone)]
 pub struct FuncType {
     pub parameters: Vec<Type>,
     pub execution: fn(&mut Value, Vec<Value>) -> Option<Value>,
@@ -61,6 +63,7 @@ impl Environment {
     }
 }
 
+#[derive(Clone)]
 pub enum FunctionType {
     Custom(Function),
     Builtin(Func),
@@ -91,7 +94,7 @@ pub struct Interpreter {
     type_fuctions: HashMap<Type, HashMap<String, FunctionType>>
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Structure {
     pub fields: HashMap<String, Type>,
 }
@@ -136,7 +139,7 @@ impl Scope {
 }
 
 impl Interpreter {
-    pub fn new(program: Program, environment: Environment) -> Interpreter {
+    pub fn new(program: Program, environment: Environment) -> Interpreter { //Environment have priority over program declaration
         let mut interpreter = Interpreter {
             constants: environment.scope,
             functions: environment.functions,
@@ -144,9 +147,9 @@ impl Interpreter {
             type_fuctions: environment.type_functions
         };
 
-        for constant in program.constants {
+        for (name, constant) in program.constants {
             let value =
-                match interpreter.execute_expression(&constant.value, &mut interpreter.constants.clone()) {
+                match interpreter.execute_expression(&constant.value, &interpreter.constants) {
                     Some(v) => v,
                     None => panic!("No value found for this constant"),
                 };
@@ -158,21 +161,21 @@ impl Interpreter {
 
             interpreter
                 .constants
-                .register_variable(&constant.name, variable);
+                .register_variable(&name, variable);
         }
 
-        for function in program.functions {
-            if interpreter.functions.contains_key(&function.name) {
-                panic!("Function '{}' already registered!", function.name);
+        for (name, function) in program.functions {
+            if interpreter.functions.contains_key(&name) {
+                panic!("Function '{}' already registered!", name);
             }
             interpreter
                 .functions
-                .insert(function.name.clone(), FunctionType::Custom(function));
+                .insert(name, FunctionType::Custom(function));
         }
 
-        for structure in program.structures {
-            if interpreter.functions.contains_key(&structure.name) {
-                panic!("Structure '{}' already registered!", structure.name);
+        for (name, structure) in program.structures {
+            if interpreter.functions.contains_key(&name) {
+                panic!("Structure '{}' already registered!", name);
             }
 
             let mut fields = HashMap::new();
@@ -181,7 +184,7 @@ impl Interpreter {
             }
             interpreter
                 .structures
-                .insert(structure.name, Structure { fields });
+                .insert(name, Structure { fields });
         }
 
         return interpreter;
@@ -206,7 +209,7 @@ impl Interpreter {
         &self,
         name: &String,
         parameters: &Vec<Expression>,
-        scope: &mut Scope,
+        scope: &Scope,
     ) -> Option<Value> {
         let mut values: Vec<Value> = vec![];
         for e in parameters {
@@ -259,7 +262,7 @@ impl Interpreter {
         }
     }
 
-    fn execute_function_type(&self, val: &mut Value, function_name: &String, parameters: &Vec<Expression>, scope: &mut Scope) -> Option<Value> {
+    fn execute_function_type(&self, val: &mut Value, function_name: &String, parameters: &Vec<Expression>, scope: &Scope) -> Option<Value> {
         let value_type = self.get_type_of_value(&val);
         match self.type_fuctions.get(&value_type) {
             Some(map) => match map.get(function_name) {
@@ -361,12 +364,12 @@ impl Interpreter {
                     None => {}
                 },
                 Statement::Assign(value) => {
-                    let mut expr_scope = scope.clone(); //TODO search another way
+                    let expr_scope = scope.clone(); //TODO search another way
                     self.assign_value(
                         &value.variable,
                         &value.expression,
                         scope,
-                        &mut expr_scope
+                        &expr_scope
                     );
                 }
                 Statement::While(value) => {
@@ -384,6 +387,26 @@ impl Interpreter {
                 Statement::Scope(value) => {
                     if let Some(v) = self.execute_statements(&value.body, scope) {
                         return Some(v);
+                    }
+                }
+                Statement::For(value) => {
+                    let val = self.execute_expression(&value.values, scope)?;
+                    let value_type = self.get_type_of_value(&val);
+                    let mut scope_clone = scope.clone();
+                    scope_clone.register_variable(&value.variable, Variable {
+                        value_type,
+                        value: Value::Literal(Literal::Null),
+                    });
+                    match val {
+                        Value::Array(values) => {
+                            for v in values {
+                                scope_clone.get_mut_variable(&value.variable)?.value = v;
+                                if let Some(v) = self.execute_statements(&value.body, &mut scope_clone) {
+                                    return Some(v);
+                                }
+                            }
+                        }
+                        _ => panic!("Expected a array value for iteration")
                     }
                 }
                 _ => {
@@ -422,7 +445,7 @@ impl Interpreter {
         }
     }
 
-    fn execute_expression_and_expect_number(&self, expression: &Expression, scope: &mut Scope) -> usize {
+    fn execute_expression_and_expect_number(&self, expression: &Expression, scope: &Scope) -> usize {
         match self.execute_expression_and_expect_literal(expression, scope) {
             Some(v) => match v {
                 Literal::Number(n) => n,
@@ -457,7 +480,7 @@ impl Interpreter {
                             Type::Array(ref v) => v,
                             _ => panic!("Invalid type for array call"),
                         };
-                        return Some((&mut values[i], value_type))
+                        return Some((&mut values[i], value_type)) //TODO verify if type is tuple.1 is same as values[i]
                     }
                     val => panic!("Expected a array value but got {:?}", val)
                 }
@@ -465,7 +488,7 @@ impl Interpreter {
         }
     }
 
-    fn assign_value(&self, path: &VariablePath, expression_value: &Expression, scope: &mut Scope, expression_scope: &mut Scope) {
+    fn assign_value(&self, path: &VariablePath, expression_value: &Expression, scope: &mut Scope, expression_scope: &Scope) {
         let value = match self.execute_expression(&expression_value, expression_scope) {
             Some(v) => v,
             None => panic!("No value returned from this expression!")
@@ -487,7 +510,7 @@ impl Interpreter {
         &self,
         left: &Expression,
         right: &Expression,
-        scope: &mut Scope,
+        scope: &Scope,
     ) -> Option<(usize, usize)> {
         if let (Literal::Number(left_val), Literal::Number(right_val)) = (
             self.execute_expression_and_expect_literal(left, scope)?,
@@ -503,7 +526,7 @@ impl Interpreter {
         &self,
         left: &Expression,
         right: &Expression,
-        scope: &mut Scope,
+        scope: &Scope,
     ) -> Option<(bool, bool)> {
         if let (Literal::Boolean(left_val), Literal::Boolean(right_val)) = (
             self.execute_expression_and_expect_literal(left, scope)?,
@@ -518,7 +541,7 @@ impl Interpreter {
     fn execute_expression_and_expect_literal(
         &self,
         expr: &Expression,
-        scope: &mut Scope,
+        scope: &Scope,
     ) -> Option<Literal> {
         match self.execute_expression(expr, scope)? {
             Value::Literal(v) => Some(v),
@@ -532,7 +555,7 @@ impl Interpreter {
     fn execute_expression_and_validate_type(
         &self,
         expr: &Expression,
-        scope: &mut Scope,
+        scope: &Scope,
         value_type: &Type,
     ) -> Option<Value> {
         let value = self.execute_expression(expr, scope)?;
@@ -547,7 +570,7 @@ impl Interpreter {
         Some(value)
     }
 
-    fn execute_expression(&self, expr: &Expression, scope: &mut Scope) -> Option<Value> {
+    fn execute_expression(&self, expr: &Expression, scope: &Scope) -> Option<Value> {
         match expr {
             Expression::Value(val) => Some(Value::Literal(val.clone())),
             Expression::Variable(val) => match scope.get_variable(val) {
@@ -610,20 +633,21 @@ impl Interpreter {
             Expression::Operator(operator) => {
                 match operator {
                     Operator::Dot(left, right) => match self.execute_expression(left, scope)? {
-                        Value::Structure(_, ref mut values) => self.execute_expression(right, values),
+                        Value::Structure(_, values) => self.execute_expression(right, &values),
                         ref mut val => match right.as_ref() {
                             Expression::FunctionCall(name, params) => {
                                 let path = match VariablePath::get_path_for_variable(*left.clone()) {
                                     Ok(v) => v,
                                     Err(err) => panic!("No dynamic variable path found for this expression, error: {:?}", err)
                                 };
-                                let mut cloned_scope = scope.clone();
-                                let tuple = match self.get_variable(&path, scope) { //scope not mutable TODO
-                                    Some(v) => v,
-                                    None => panic!("No variable found for path '{:?}'", path)
-                                }; 
+                                let tuple = unsafe {
+                                        match self.get_variable(&path, &mut *(scope as *const _ as *mut _)) { //scope not mutable TODO
+                                        Some(v) => v,
+                                        None => panic!("No variable found for path '{:?}'", path)
+                                    }
+                                };
 
-                                self.execute_function_type(tuple.0, name, params, &mut cloned_scope)
+                                self.execute_function_type(tuple.0, name, params, scope)
                             }
                             v => panic!("Got '{:?}' called on '{:?}', what is it supposed to do ?", v, val),
                         }
@@ -632,14 +656,14 @@ impl Interpreter {
                         if let Some((left, right)) = self.get_booleans(left, right, scope) {
                             Some(Value::Literal(Literal::Boolean(left && right)))
                         } else {
-                            None
+                            panic!("Expected two booleans")
                         }
                     }
                     Operator::OperatorOr(left, right) => {
                         if let Some((left, right)) = self.get_booleans(left, right, scope) {
                             Some(Value::Literal(Literal::Boolean(left || right)))
                         } else {
-                            None
+                            panic!("Expected two booleans")
                         }
                     }
                     Operator::OperatorEquals(left, right) => {

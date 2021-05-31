@@ -26,6 +26,7 @@ pub enum Token {
     While,
     Break,
     Continue,
+    In,
 
     ParenthesisOpen,
     ParenthesisClose,
@@ -92,6 +93,7 @@ impl Token {
             "while" => While,
             "break" => Break,
             "continue" => Continue,
+            "in" => In,
 
             "(" => ParenthesisOpen,
             ")" => ParenthesisClose,

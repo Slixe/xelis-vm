@@ -65,9 +65,8 @@ pub struct WhileStatement {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ForStatement {
-    pub declaration: Option<DeclarationStatement>,
-    pub condition: Expression,
-    pub updater: Option<AssignStatement>,
+    pub variable: String,
+    pub values: Expression,
     pub body: Vec<Statement>,
 }
 
@@ -171,9 +170,9 @@ pub struct Constant {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Program {
-    pub structures: Vec<Structure>,
-    pub constants: Vec<Constant>,
-    pub functions: Vec<Function>,
+    pub structures: HashMap<String, Structure>,
+    pub constants: HashMap<String, Constant>,
+    pub functions: HashMap<String, Function>,
 }
 
 #[derive(Debug)]
@@ -182,6 +181,7 @@ pub enum ParserError {
     InvalidExpression(String),
     NoTokenFound,
     NoTypeOrValueFound(TokenValue),
+    AlreadyRegistered(String)
 }
 
 pub type ParserResult<T> = Result<T, ParserError>;
@@ -191,9 +191,9 @@ use std::cell::Cell;
 pub struct Parser {
     cursor: Cell<usize>,
     tokens: Vec<TokenValue>,
-    functions: Vec<Function>,
-    constants: Vec<Constant>,
-    structures: Vec<Structure>,
+    functions: HashMap<String, Function>,
+    constants: HashMap<String, Constant>,
+    structures: HashMap<String, Structure>,
 }
 
 impl Parser {
@@ -201,9 +201,9 @@ impl Parser {
         Parser {
             cursor: Cell::new(0),
             tokens: tokens,
-            functions: vec![],
-            constants: vec![],
-            structures: vec![],
+            functions: HashMap::new(),
+            constants: HashMap::new(),
+            structures: HashMap::new(),
         }
     }
 
@@ -214,16 +214,20 @@ impl Parser {
                 Token::Function | Token::Entry => {
                     let entry = first.token == Token::Entry;
                     let function = self.read_function(entry)?;
-                    self.functions.push(function);
+                    if let Some(v) = self.functions.insert(function.name.clone(), function) {
+                        return Err(ParserError::AlreadyRegistered(format!("Function '{}' is already registered! Function name should be unique!", v.name)))
+                    }
                 }
                 Token::Struct => {
                     let identifier = next_token!(self, Identifier);
                     next_token!(self, BraceOpen);
                     let parameters: Vec<Parameter> = self.read_parameters()?;
-                    self.structures.push(Structure {
+                    if let Some(v) = self.structures.insert(identifier.value.clone(), Structure {
                         name: identifier.value.clone(),
                         parameters: parameters,
-                    });
+                    }) {
+                        return Err(ParserError::AlreadyRegistered(format!("Structure '{}' is already registered! Structure name should be unique!", v.name)))
+                    }
                 }
                 Token::Const => {
                     let name = next_token!(self, Identifier);
@@ -250,11 +254,13 @@ impl Parser {
                         ));
                     }
 
-                    self.constants.push(Constant {
+                    if let Some(v) = self.constants.insert(name.value.clone(), Constant {
                         name: name.value.clone(),
                         value_type: value_type,
                         value: value,
-                    });
+                    }) {
+                        return Err(ParserError::AlreadyRegistered(format!("Constant with name '{}' is already registered! Constant name should be unique!", v.name)))
+                    }
                 }
                 _ => {
                     return Err(ParserError::UnexpectedToken(
@@ -356,22 +362,28 @@ impl Parser {
                                 self.read_array_call(Expression::Variable(token.value.clone()))?
                             }
                             Token::BraceOpen => {
-                                next_token!(self);
-                                let mut params = HashMap::new();
-                                let mut current = self.view_current()?;
-                                while current.token != Token::BraceClose {
-                                    let field = next_token!(self, Identifier).value.clone();
-                                    next_token!(self, Colon);
-                                    let value = self.read_expression()?;
-                                    params.insert(field, value);
-                                    current = self.view_current()?;
-                                    if current.token == Token::Comma {
-                                        next_token!(self);
+                                let expr: Expression;
+                                if !self.structures.contains_key(&token.value) {
+                                    expr = Expression::Variable(token.value.clone());
+                                } else {
+                                    next_token!(self);
+                                    let mut params = HashMap::new();
+                                    let mut current = self.view_current()?;
+                                    while current.token != Token::BraceClose {
+                                        let field = next_token!(self, Identifier).value.clone();
+                                        next_token!(self, Colon);
+                                        let value = self.read_expression()?;
+                                        params.insert(field, value);
                                         current = self.view_current()?;
+                                        if current.token == Token::Comma {
+                                            next_token!(self);
+                                            current = self.view_current()?;
+                                        }
                                     }
+                                    next_token!(self, BraceClose);
+                                    expr = Expression::Structure(token.value.clone(), params);
                                 }
-                                next_token!(self, BraceClose);
-                                Expression::Structure(token.value.clone(), params)
+                                expr
                             }
                             _ => Expression::Variable(token.value.clone()),
                         }
@@ -512,13 +524,14 @@ impl Parser {
 
     fn read_statement_for(&self) -> ParserResult<Statement> {
         next_token!(self, For);
-        let condition = self.read_expression()?;
+        let variable = next_token!(self, Identifier).value.clone();
+        next_token!(self, In);
+        let values = self.read_expression()?;
         let statements = self.read_body()?;
 
         Ok(Statement::For(ForStatement {
-            declaration: None,
-            condition: condition,
-            updater: None,
+            variable,
+            values,
             body: statements,
         }))
     }
