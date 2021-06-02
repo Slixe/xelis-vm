@@ -277,7 +277,8 @@ impl Interpreter {
                             while i < f.parameters.len() {
                                 let value = self.execute_expression(&parameters[i], scope)?;
                                 let value_type = self.get_type_of_value(&value);
-                                if value_type != f.parameters[i] {
+                                let param_type = &f.parameters[i];
+                                if *param_type == Type::Any || value_type != *param_type {
                                     panic!("Invalid value type for parameter {}, expected {:?} found {:?}", i, f.parameters[i], value_type);
                                 }
                                 values.push(value);

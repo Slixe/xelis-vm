@@ -45,7 +45,7 @@ Once these tests are passed, we can execute the code using the [interpreter](htt
 
 ## Testing
 
-If you want to test the code from [program.xel](https://github.com/Slixe/xelis-vm/blob/master/program.xel)  make sure you have Cargo installed.
+If you want to test the code from [tests.xel](https://github.com/Slixe/xelis-vm/blob/master/tests.xel) make sure you have Cargo installed.
 ```bash
 cargo run
 ```
