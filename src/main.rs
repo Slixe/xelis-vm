@@ -19,8 +19,18 @@ fn array_len(current_value: &mut Value, _: Vec<Value>) -> Option<Value> {
 }
 
 fn array_push(current_value: &mut Value, parameters: Vec<Value>) -> Option<Value> {
+    let value = &parameters[0];
+    let current_type = match Type::get_type_of_value(current_value) {
+        Type::Array(v) => v,
+        _ => panic!("Unexpected type? How is it possible!")
+    };
+    let value_type = Type::get_type_of_value(value);
+    if  *current_type != value_type {
+        panic!("Type is not valid for value, expected {:?} found {:?}", current_type, value_type);
+    }
+
     if let Value::Array(ref mut values) = current_value {
-        values.push(parameters[0].clone());
+        values.push(value.clone());
     }
     None
 }
@@ -40,9 +50,9 @@ fn main() {
     println!("{}", serde_json::to_string_pretty(&program).unwrap());
 
     let mut env = Environment::new();
-    env.bind_native_function(String::from("println"), println_func, vec![Type::String]); //print in terminal a string
-    env.bind_native_function_on_type(Type::Array(Box::new(Type::Number)), String::from("len"), array_len, vec![]); //return the len of array
-    env.bind_native_function_on_type(Type::Array(Box::new(Type::Number)), String::from("push"), array_push, vec![Type::Number]); //add value in array
+    env.bind_native_function(String::from("println"), println_func, vec![Type::Any]); //print in terminal a string
+    env.bind_native_function_on_type(Type::Array(Box::new(Type::Any)), String::from("len"), array_len, vec![]); //return the len of array
+    env.bind_native_function_on_type(Type::Array(Box::new(Type::Any)), String::from("push"), array_push, vec![Type::Any]); //add value in array
 
     for func in vec!["for_each", "compute_with_constant", "while_test", "struct_example", "function_call_example", "condition_example"] {
         println!("executing entrypoint: {}", func);

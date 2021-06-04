@@ -1,6 +1,6 @@
 # Xelis VM
 
-Xelis is an interpreted language developed in Rust. It supports constants, functions, while/for loops, arrays and structures. The syntax is strongly inspired by the Rust programming language.
+Xelis is an interpreted language developed in Rust. It supports constants, functions, while/foreach loops, arrays and structures. The syntax is strongly inspired by the Rust programming language.
 
 The different primitive types present in the language are:
 - String

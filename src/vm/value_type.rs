@@ -1,5 +1,6 @@
 use super::lexer::*;
 use super::parser::Structure;
+use super::interpreter::Value;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -44,5 +45,26 @@ impl Type {
         };
 
         Some(_type)
+    }
+
+    pub fn get_type_of_value(value: &Value) -> Type {
+        match &value {
+            Value::Literal(l) => match l {
+                Literal::Null => {
+                    panic!("Expected a not-null value or a type");
+                }
+                Literal::Boolean(_) => Type::Boolean,
+                Literal::Number(_) => Type::Number,
+                Literal::String(_) => Type::String,
+            },
+            Value::Array(values) => {
+                if values.len() > 0 {
+                    return Type::Array(Box::new(Type::get_type_of_value(&values[0])));
+                }
+
+                panic!("Expected at least one value to determine Array type!")
+            }
+            Value::Structure(name, _) => Type::Structure(name.clone()),
+        }
     }
 }

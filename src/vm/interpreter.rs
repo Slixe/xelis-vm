@@ -155,7 +155,7 @@ impl Interpreter {
                 };
 
             let variable = Variable {
-                value_type: interpreter.get_type_of_value(&value),
+                value_type: Type::get_type_of_value(&value),
                 value,
             };
 
@@ -230,7 +230,7 @@ impl Interpreter {
         while i < types.len() {
             let value_type = types[i];
             let value = &values[i];
-            if self.get_type_of_value(value) != *value_type {
+            if Type::get_type_of_value(value) != *value_type && *value_type != Type::Any {
                 panic!(
                     "Invalid value type for parameter {} expected {:?} found {:?}!",
                     i, value_type, value
@@ -262,9 +262,23 @@ impl Interpreter {
         }
     }
 
+    fn get_function_type(&self, value_type: &Type) -> Option<&HashMap<String, FunctionType>> {
+        match self.type_fuctions.get(value_type) {
+            Some(v) => Some(v),
+            None => match value_type {
+                Type::Array(t) => match t.as_ref() {
+                    Type::Any => None,
+                    _ => self.get_function_type(&Type::Array(Box::new(Type::Any)))
+                }
+                Type::Any => None,
+                _ => self.get_function_type(&Type::Any) 
+            }
+        }
+    }
+
     fn execute_function_type(&self, val: &mut Value, function_name: &String, parameters: &Vec<Expression>, scope: &Scope) -> Option<Value> {
-        let value_type = self.get_type_of_value(&val);
-        match self.type_fuctions.get(&value_type) {
+        let value_type = Type::get_type_of_value(&val);
+        match self.get_function_type(&value_type) {
             Some(map) => match map.get(function_name) {
                 Some(v) => match v {
                         FunctionType::Type(f) => {
@@ -276,9 +290,9 @@ impl Interpreter {
                             let mut i = 0;
                             while i < f.parameters.len() {
                                 let value = self.execute_expression(&parameters[i], scope)?;
-                                let value_type = self.get_type_of_value(&value);
+                                let value_type = Type::get_type_of_value(&value);
                                 let param_type = &f.parameters[i];
-                                if *param_type == Type::Any || value_type != *param_type {
+                                if *param_type != Type::Any && value_type != *param_type {
                                     panic!("Invalid value type for parameter {}, expected {:?} found {:?}", i, f.parameters[i], value_type);
                                 }
                                 values.push(value);
@@ -348,7 +362,7 @@ impl Interpreter {
 
                     if value_type.is_none() {
                         if let Some(v) = &value {
-                            value_type = Some(self.get_type_of_value(&v));
+                            value_type = Some(Type::get_type_of_value(&v));
                         }
                     }
 
@@ -392,7 +406,7 @@ impl Interpreter {
                 }
                 Statement::For(value) => {
                     let val = self.execute_expression(&value.values, scope)?;
-                    let value_type = self.get_type_of_value(&val);
+                    let value_type = Type::get_type_of_value(&val);
                     let mut scope_clone = scope.clone();
                     scope_clone.register_variable(&value.variable, Variable {
                         value_type,
@@ -423,27 +437,6 @@ impl Interpreter {
             };
         }
         None
-    }
-
-    fn get_type_of_value(&self, value: &Value) -> Type {
-        match &value {
-            Value::Literal(l) => match l {
-                Literal::Null => {
-                    panic!("Expected a not-null value or a type");
-                }
-                Literal::Boolean(_) => Type::Boolean,
-                Literal::Number(_) => Type::Number,
-                Literal::String(_) => Type::String,
-            },
-            Value::Array(values) => {
-                if values.len() > 0 {
-                    return Type::Array(Box::new(self.get_type_of_value(&values[0])));
-                }
-
-                panic!("Expected at least one value to determine Array type!")
-            }
-            Value::Structure(name, _) => Type::Structure(name.clone()),
-        }
     }
 
     fn execute_expression_and_expect_number(&self, expression: &Expression, scope: &Scope) -> usize {
@@ -499,7 +492,7 @@ impl Interpreter {
             None => panic!("No variable found for this path: {:?}", path)
         };
 
-        let value_type = self.get_type_of_value(&value);
+        let value_type = Type::get_type_of_value(&value);
         if *var_type != value_type {
             panic!("Invalid type of value for this variable. Got {:?} but expected {:?}", value_type, var_type);
         }
@@ -560,7 +553,7 @@ impl Interpreter {
         value_type: &Type,
     ) -> Option<Value> {
         let value = self.execute_expression(expr, scope)?;
-        let _type = self.get_type_of_value(&value);
+        let _type = Type::get_type_of_value(&value);
         if _type != *value_type {
             panic!(
                 "Invalid value type got {:?} for value {:?} but expected type {:?}",

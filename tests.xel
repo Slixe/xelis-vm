@@ -3,7 +3,7 @@ entry for_each() {
     array.push(40)  //array.push(value) is a function registered on type Array.
     println("Array len: " + (array.len()))
     for a in array { //for each on Array
-        println(a + "") //println is a native function
+        println(a) //println is a native function
     }
 }
 
