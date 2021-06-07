@@ -181,7 +181,8 @@ pub enum ParserError {
     InvalidExpression(String),
     NoTokenFound,
     NoTypeOrValueFound(TokenValue),
-    AlreadyRegistered(String)
+    AlreadyRegistered(String),
+    ExpectedType(String)
 }
 
 pub type ParserResult<T> = Result<T, ParserError>;
@@ -454,10 +455,14 @@ impl Parser {
             next_token!(self);
             opt_ret_value = match self.get_type() {
                 Ok(val) => Some(val),
-                Err(_) => None,
+                Err(_) => return Err(ParserError::ExpectedType(String::from("Expected a type after colon token"))),
             };
         } else if current.token == Token::BraceOpen {
-            opt_ret_value = None;
+            if entry {
+                opt_ret_value = Some(Type::Number);
+            } else {
+                opt_ret_value = None;
+            }
         } else {
             return Err(ParserError::UnexpectedToken(
                 current.clone(),

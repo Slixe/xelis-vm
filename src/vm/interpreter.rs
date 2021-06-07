@@ -256,7 +256,11 @@ impl Interpreter {
                     i += 1;
                 }
 
-                self.execute_statements(&f.statements, &mut scope)
+                let result = self.execute_statements(&f.statements, &f.ret_value, &mut scope);
+                if result.is_some() != f.ret_value.is_some() {
+                    panic!("Error on function, mismatch on returned value and function return type");
+                }
+                result
             }
             _ => panic!("Invalid function type")
         }
@@ -309,7 +313,7 @@ impl Interpreter {
         }
     }
 
-    fn execute_statements(&self, statements: &Vec<Statement>, scope: &mut Scope) -> Option<Value> {
+    fn execute_statements(&self, statements: &Vec<Statement>, return_type: &Option<Type>, scope: &mut Scope) -> Option<Value> {
         let mut accept_else = false;
         for statement in statements {
             match statement {
@@ -326,7 +330,7 @@ impl Interpreter {
                         };
 
                         if condition {
-                            if let Some(res) = self.execute_statements(&value.body, scope) {
+                            if let Some(res) = self.execute_statements(&value.body, return_type, scope) {
                                 return Some(res);
                             }
                         } else {
@@ -336,7 +340,7 @@ impl Interpreter {
                 }
                 Statement::Else(value) => {
                     if accept_else {
-                        if let Some(res) = self.execute_statements(&value.body, scope) {
+                        if let Some(res) = self.execute_statements(&value.body, return_type, scope) {
                             return Some(res);
                         }
                     }
@@ -374,9 +378,19 @@ impl Interpreter {
                         },
                     );
                 }
-                Statement::Return(value) => match value {
-                    Some(value) => return self.execute_expression(value, scope),
-                    None => {}
+                Statement::Return(value) => match return_type {
+                    Some(ret_type) => {
+                        match value {
+                            Some(v) => return self.execute_expression_and_validate_type(v, scope, ret_type),
+                            None => panic!("Expected a value to be returned.")
+                        }
+                    },
+                    None => {
+                        if value.is_some() {
+                            panic!("Returned value, but function doesn't accept it")
+                        }
+                        return None
+                    }
                 },
                 Statement::Assign(value) => {
                     let expr_scope = scope.clone(); //TODO search another way
@@ -394,13 +408,13 @@ impl Interpreter {
                         Literal::Boolean(v) => v,
                         _ => panic!("Expected a valid condition"),
                     } {
-                        if let Some(v) = self.execute_statements(&value.body, scope) {
+                        if let Some(v) = self.execute_statements(&value.body, return_type, scope) {
                             return Some(v);
                         }
                     }
                 }
                 Statement::Scope(value) => {
-                    if let Some(v) = self.execute_statements(&value.body, scope) {
+                    if let Some(v) = self.execute_statements(&value.body, return_type, scope) {
                         return Some(v);
                     }
                 }
@@ -416,7 +430,7 @@ impl Interpreter {
                         Value::Array(values) => {
                             for v in values {
                                 scope_clone.get_mut_variable(&value.variable)?.value = v;
-                                if let Some(v) = self.execute_statements(&value.body, &mut scope_clone) {
+                                if let Some(v) = self.execute_statements(&value.body, return_type, &mut scope_clone) {
                                     return Some(v);
                                 }
                             }
@@ -552,7 +566,10 @@ impl Interpreter {
         scope: &Scope,
         value_type: &Type,
     ) -> Option<Value> {
-        let value = self.execute_expression(expr, scope)?;
+        let value = match self.execute_expression(expr, scope) {
+            Some(v) => v,
+            None => panic!("Expected a value, but nothing is returned!")
+        };
         let _type = Type::get_type_of_value(&value);
         if _type != *value_type {
             panic!(
@@ -627,8 +644,24 @@ impl Interpreter {
             Expression::Operator(operator) => {
                 match operator {
                     Operator::Dot(left, right) => match self.execute_expression(left, scope)? {
-                        Value::Structure(_, values) => self.execute_expression(right, &values),
-                        ref mut val => match right.as_ref() {
+                        Value::Structure(_, values) => match right.as_ref() {
+                            Expression::FunctionCall(name, params) => {
+                                let path = match VariablePath::get_path_for_variable(*left.clone()) {
+                                    Ok(v) => v,
+                                    Err(err) => panic!("No dynamic variable path found for this expression, error: {:?}", err)
+                                };
+                                let tuple = unsafe {
+                                        match self.get_variable(&path, &mut *(scope as *const _ as *mut _)) { //scope not mutable TODO
+                                        Some(v) => v,
+                                        None => panic!("No variable found for path '{:?}'", path)
+                                    }
+                                };
+
+                                self.execute_function_type(tuple.0, name, params, &values)
+                            },
+                            right => self.execute_expression(right, &values)
+                        },
+                        val => match right.as_ref() {
                             Expression::FunctionCall(name, params) => {
                                 let path = match VariablePath::get_path_for_variable(*left.clone()) {
                                     Ok(v) => v,
@@ -764,6 +797,12 @@ impl Interpreter {
                                     left_val, "null"
                                 )))),
                             },
+                            Literal::Null => match right {
+                                Literal::String(val) => Some(Value::Literal(Literal::String(
+                                    format!("{}{}", "null", val),
+                                ))),
+                                _ => panic!("Error, only string is authorized on null")
+                            }
                             _ => panic!("Error! Invalid type for + operator"),
                         }
                     }

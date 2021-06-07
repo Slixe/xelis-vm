@@ -5,12 +5,14 @@ entry for_each() {
     for a in array { //for each on Array
         println(a) //println is a native function
     }
+    return 0
 }
 
 const GLOBAL_RATE: number = 5 * 15 * 10
 
 entry compute_with_constant() {
     println("Global rate: " + GLOBAL_RATE)
+    return 0
 }
 
 entry while_test() {
@@ -19,6 +21,7 @@ entry while_test() {
         println(i + "")
         i -= 1
     }
+    return 0
 }
 
 struct Order {
@@ -42,6 +45,7 @@ entry struct_example() {
         orders: orders
     }
     println("Total cost ($): " + ((user.orders[0].price) * (user.orders[0].quantity))) //TODO make the parentheses optional
+    return 0
 }
 
 func bar(a: number): number {
@@ -54,6 +58,7 @@ func foo(): number {
 
 entry function_call_example() { //only func declared with "entry" are public function and can be called outside the program
     println("Result: " + foo())
+    return 0
 }
 
 entry condition_example() {
@@ -64,4 +69,23 @@ entry condition_example() {
     } else {
         println("well, no.")
     }
+    return 0
+}
+
+struct Test {}
+
+entry func_on_struct() {
+    let test = Test {}
+    test.say_hello() //registered as a native function on Test struct
+    return 0
+}
+
+entry null_example() {
+    let test: Test
+    if test == null {
+        println("Test is null!")
+    } else {
+        println("Test is not null!")
+    }
+    return 0
 }

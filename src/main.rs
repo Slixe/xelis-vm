@@ -35,6 +35,11 @@ fn array_push(current_value: &mut Value, parameters: Vec<Value>) -> Option<Value
     None
 }
 
+fn say_hello(_: &mut Value, _: Vec<Value>) -> Option<Value> {
+    println!("Hello World from 'say_hello' on Test structure instance");
+    None
+}
+
 fn main() {
     let code: String =
         fs::read_to_string("tests.xel").expect("Something went wrong reading the file");
@@ -53,13 +58,15 @@ fn main() {
     env.bind_native_function(String::from("println"), println_func, vec![Type::Any]); //print in terminal a string
     env.bind_native_function_on_type(Type::Array(Box::new(Type::Any)), String::from("len"), array_len, vec![]); //return the len of array
     env.bind_native_function_on_type(Type::Array(Box::new(Type::Any)), String::from("push"), array_push, vec![Type::Any]); //add value in array
+    env.bind_native_function_on_type(Type::Structure(String::from("Test")), String::from("say_hello"), say_hello, vec![]);
 
-    for func in vec!["for_each", "compute_with_constant", "while_test", "struct_example", "function_call_example", "condition_example"] {
+    for func in vec!["for_each", "compute_with_constant", "while_test", "struct_example", "function_call_example", "condition_example", "func_on_struct", "null_example"] {
         println!("executing entrypoint: {}", func);
         let interpreter = Interpreter::new(program.clone(), env.clone());
         println!(
             "Value returned {:?}",
             interpreter.run_function(func.to_string(), vec![])
         );
+        println!("-------------------");
     }
 }
