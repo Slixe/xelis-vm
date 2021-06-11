@@ -89,3 +89,21 @@ entry null_example() {
     }
     return 0
 }
+
+entry scope_example() {
+    let a = 10
+    {
+        let b = a + 24
+        a = 15
+    }
+    println(a)
+    //println(b) //Can't work, because b is declared in another scope
+
+    return 0
+}
+
+entry variable_declaration() {
+    let a_5 = 1_000_000_000 //Variable should start with at least a letter
+    println(a_5)
+    return 0
+}

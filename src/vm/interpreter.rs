@@ -136,6 +136,15 @@ impl Scope {
             panic!("Variable '{}' already exist with value: {:?}", name, v);
         }
     }
+
+    pub fn update_scope(&mut self, mut scope: Scope) {
+        for (key, val) in self.variables.iter_mut() {
+            *val = match scope.variables.remove(key) {
+                Some(v) => v,
+                None => panic!(format!("Variable '{}' not present in child scope! How ?", key))
+            };
+        }
+    }
 }
 
 impl Interpreter {
@@ -330,9 +339,11 @@ impl Interpreter {
                         };
 
                         if condition {
-                            if let Some(res) = self.execute_statements(&value.body, return_type, scope) {
+                            let mut cloned_scope = scope.clone();
+                            if let Some(res) = self.execute_statements(&value.body, return_type, &mut cloned_scope) {
                                 return Some(res);
                             }
+                            scope.update_scope(cloned_scope);
                         } else {
                             accept_else = true;
                         }
@@ -340,9 +351,11 @@ impl Interpreter {
                 }
                 Statement::Else(value) => {
                     if accept_else {
-                        if let Some(res) = self.execute_statements(&value.body, return_type, scope) {
+                        let mut cloned_scope = scope.clone();
+                        if let Some(res) = self.execute_statements(&value.body, return_type, &mut cloned_scope) {
                             return Some(res);
                         }
+                        scope.update_scope(cloned_scope);
                     }
                 }
                 Statement::Variable(var) => {
@@ -402,38 +415,44 @@ impl Interpreter {
                     );
                 }
                 Statement::While(value) => {
+                    let mut cloned_scope = scope.clone();
                     while match self
-                        .execute_expression_and_expect_literal(&value.condition, scope)?
+                        .execute_expression_and_expect_literal(&value.condition, &mut cloned_scope)?
                     {
                         Literal::Boolean(v) => v,
                         _ => panic!("Expected a valid condition"),
                     } {
-                        if let Some(v) = self.execute_statements(&value.body, return_type, scope) {
+                        if let Some(v) = self.execute_statements(&value.body, return_type, &mut cloned_scope) {
                             return Some(v);
                         }
                     }
+                    scope.update_scope(cloned_scope);
                 }
                 Statement::Scope(value) => {
-                    if let Some(v) = self.execute_statements(&value.body, return_type, scope) {
+                    let mut cloned_scope = scope.clone();
+                    if let Some(v) = self.execute_statements(&value.body, return_type, &mut cloned_scope) {
                         return Some(v);
                     }
+                    scope.update_scope(cloned_scope);
                 }
                 Statement::For(value) => {
                     let val = self.execute_expression(&value.values, scope)?;
                     let value_type = Type::get_type_of_value(&val);
-                    let mut scope_clone = scope.clone();
-                    scope_clone.register_variable(&value.variable, Variable {
+                    let mut cloned_scope = scope.clone();
+                    cloned_scope.register_variable(&value.variable, Variable {
                         value_type,
                         value: Value::Literal(Literal::Null),
                     });
                     match val {
                         Value::Array(values) => {
                             for v in values {
-                                scope_clone.get_mut_variable(&value.variable)?.value = v;
-                                if let Some(v) = self.execute_statements(&value.body, return_type, &mut scope_clone) {
+                                cloned_scope.get_mut_variable(&value.variable)?.value = v;
+                                if let Some(v) = self.execute_statements(&value.body, return_type, &mut cloned_scope) {
                                     return Some(v);
                                 }
                             }
+
+                            scope.update_scope(cloned_scope);
                         }
                         _ => panic!("Expected a array value for iteration")
                     }

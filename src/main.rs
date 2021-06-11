@@ -60,9 +60,9 @@ fn main() {
     env.bind_native_function_on_type(Type::Array(Box::new(Type::Any)), String::from("push"), array_push, vec![Type::Any]); //add value in array
     env.bind_native_function_on_type(Type::Structure(String::from("Test")), String::from("say_hello"), say_hello, vec![]);
 
-    for func in vec!["for_each", "compute_with_constant", "while_test", "struct_example", "function_call_example", "condition_example", "func_on_struct", "null_example"] {
+    let interpreter = Interpreter::new(program, env);
+    for func in vec!["for_each", "compute_with_constant", "while_test", "struct_example", "function_call_example", "condition_example", "func_on_struct", "null_example", "scope_example", "variable_declaration"] {
         println!("executing entrypoint: {}", func);
-        let interpreter = Interpreter::new(program.clone(), env.clone());
         println!(
             "Value returned {:?}",
             interpreter.run_function(func.to_string(), vec![])

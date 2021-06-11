@@ -251,7 +251,7 @@ impl Lexer {
 
             return None;
         } else if first.is_numeric() {
-            let value = self
+            let value: String = self
                 .read_while(|c: char| -> bool {
                     return c.is_numeric() || c == '_';
                 })
@@ -263,7 +263,7 @@ impl Lexer {
                 line: self.line,
                 column: self.column,
                 token: Token::ValNumber,
-                value: value,
+                value: str::replace(&value, "_", ""),
             });
         } else if first == '"' || first == '\'' {
             self.cursor_plus();
