@@ -9,7 +9,7 @@ pub struct Environment {
     pub scope: Scope,
     pub structures: HashMap<String, Structure>,
     pub functions: HashMap<String, FunctionType>,
-    pub type_functions: HashMap<Type, HashMap<String, FunctionType>>
+    pub type_functions: HashMap<Type, HashMap<String, FunctionType>>,
 }
 
 #[derive(Clone, Debug)]
@@ -34,30 +34,49 @@ impl Environment {
         }
     }
 
-    pub fn bind_native_function(&mut self, name: String, function: fn(Vec<Value>) -> Option<Value>,  parameters: Vec<Type>) {
-        if let Some(_) = self.functions.insert(name, FunctionType::Builtin(Func {
-            parameters: parameters,
-            execution: function
-        })) {
+    pub fn bind_native_function(
+        &mut self,
+        name: String,
+        function: fn(Vec<Value>) -> Option<Value>,
+        parameters: Vec<Type>,
+    ) {
+        if let Some(_) = self.functions.insert(
+            name,
+            FunctionType::Builtin(Func {
+                parameters: parameters,
+                execution: function,
+            }),
+        ) {
             panic!("Function already exist!");
         }
     }
 
-    pub fn bind_native_function_on_type(&mut self, value_type: Type, name: String, function: fn(&mut Value, Vec<Value>) -> Option<Value>,  parameters: Vec<Type>) {
-        let map: &mut HashMap<String, FunctionType> = match self.type_functions.get_mut(&value_type) {
+    pub fn bind_native_function_on_type(
+        &mut self,
+        value_type: Type,
+        name: String,
+        function: fn(&mut Value, Vec<Value>) -> Option<Value>,
+        parameters: Vec<Type>,
+    ) {
+        let map: &mut HashMap<String, FunctionType> = match self.type_functions.get_mut(&value_type)
+        {
             Some(v) => v,
             None => {
-                self.type_functions.insert(value_type.clone(), HashMap::new());
+                self.type_functions
+                    .insert(value_type.clone(), HashMap::new());
                 match self.type_functions.get_mut(&value_type) {
                     Some(v) => v,
-                    None => panic!("How is it possible ? Map is inserted on previous line!")
+                    None => panic!("How is it possible ? Map is inserted on previous line!"),
                 }
             }
         };
-        if let Some(_) = map.insert(name, FunctionType::Type(FuncType {
-            parameters: parameters,
-            execution: function
-        })) {
+        if let Some(_) = map.insert(
+            name,
+            FunctionType::Type(FuncType {
+                parameters: parameters,
+                execution: function,
+            }),
+        ) {
             panic!("Function already exist!");
         }
     }
@@ -82,7 +101,7 @@ impl FunctionType {
         match self {
             FunctionType::Custom(f) => f.parameters.iter().map(|p| &p.value_type).collect(),
             FunctionType::Builtin(f) => f.parameters.iter().map(|p| p).collect(),
-            FunctionType::Type(f) => f.parameters.iter().map(|p| p).collect()
+            FunctionType::Type(f) => f.parameters.iter().map(|p| p).collect(),
         }
     }
 }
@@ -91,7 +110,7 @@ pub struct Interpreter {
     constants: Scope,
     functions: HashMap<String, FunctionType>,
     structures: HashMap<String, Structure>,
-    type_fuctions: HashMap<Type, HashMap<String, FunctionType>>
+    type_fuctions: HashMap<Type, HashMap<String, FunctionType>>,
 }
 
 #[derive(Clone, Debug)]
@@ -141,19 +160,23 @@ impl Scope {
         for (key, val) in self.variables.iter_mut() {
             *val = match scope.variables.remove(key) {
                 Some(v) => v,
-                None => panic!(format!("Variable '{}' not present in child scope! How ?", key))
+                None => panic!(format!(
+                    "Variable '{}' not present in child scope! How ?",
+                    key
+                )),
             };
         }
     }
 }
 
 impl Interpreter {
-    pub fn new(program: Program, environment: Environment) -> Interpreter { //Environment have priority over program declaration
+    pub fn new(program: Program, environment: Environment) -> Interpreter {
+        //Environment have priority over program declaration
         let mut interpreter = Interpreter {
             constants: environment.scope,
             functions: environment.functions,
             structures: environment.structures,
-            type_fuctions: environment.type_functions
+            type_fuctions: environment.type_functions,
         };
 
         for (name, constant) in program.constants {
@@ -168,9 +191,7 @@ impl Interpreter {
                 value,
             };
 
-            interpreter
-                .constants
-                .register_variable(&name, variable);
+            interpreter.constants.register_variable(&name, variable);
         }
 
         for (name, function) in program.functions {
@@ -191,9 +212,7 @@ impl Interpreter {
             for param in structure.parameters {
                 fields.insert(param.name, param.value_type);
             }
-            interpreter
-                .structures
-                .insert(name, Structure { fields });
+            interpreter.structures.insert(name, Structure { fields });
         }
 
         return interpreter;
@@ -267,11 +286,13 @@ impl Interpreter {
 
                 let result = self.execute_statements(&f.statements, &f.ret_value, &mut scope);
                 if result.is_some() != f.ret_value.is_some() {
-                    panic!("Error on function, mismatch on returned value and function return type");
+                    panic!(
+                        "Error on function, mismatch on returned value and function return type"
+                    );
                 }
                 result
             }
-            _ => panic!("Invalid function type")
+            _ => panic!("Invalid function type"),
         }
     }
 
@@ -281,19 +302,26 @@ impl Interpreter {
             None => match value_type {
                 Type::Array(t) => match t.as_ref() {
                     Type::Any => None,
-                    _ => self.get_function_type(&Type::Array(Box::new(Type::Any)))
-                }
+                    _ => self.get_function_type(&Type::Array(Box::new(Type::Any))),
+                },
                 Type::Any => None,
-                _ => self.get_function_type(&Type::Any) 
-            }
+                _ => self.get_function_type(&Type::Any),
+            },
         }
     }
 
-    fn execute_function_type(&self, val: &mut Value, function_name: &String, parameters: &Vec<Expression>, scope: &Scope) -> Option<Value> {
+    fn execute_function_type(
+        &self,
+        val: &mut Value,
+        function_name: &String,
+        parameters: &Vec<Expression>,
+        scope: &Scope,
+    ) -> Option<Value> {
         let value_type = Type::get_type_of_value(&val);
         match self.get_function_type(&value_type) {
-            Some(map) => match map.get(function_name) {
-                Some(v) => match v {
+            Some(map) => {
+                match map.get(function_name) {
+                    Some(v) => match v {
                         FunctionType::Type(f) => {
                             let mut values: Vec<Value> = vec![];
                             if f.parameters.len() != parameters.len() {
@@ -314,15 +342,24 @@ impl Interpreter {
 
                             (f.execution)(val, values)
                         }
-                        _ => panic!("Invalid function type")
-                },
-                None => panic!("No function named '{}' found for type {:?} !", function_name, value_type)
-            },
-            None => panic!("No function found for type {:?} !", value_type)
+                        _ => panic!("Invalid function type"),
+                    },
+                    None => panic!(
+                        "No function named '{}' found for type {:?} !",
+                        function_name, value_type
+                    ),
+                }
+            }
+            None => panic!("No function found for type {:?} !", value_type),
         }
     }
 
-    fn execute_statements(&self, statements: &Vec<Statement>, return_type: &Option<Type>, scope: &mut Scope) -> Option<Value> {
+    fn execute_statements(
+        &self,
+        statements: &Vec<Statement>,
+        return_type: &Option<Type>,
+        scope: &mut Scope,
+    ) -> Option<Value> {
         let mut accept_else = false;
         for statement in statements {
             match statement {
@@ -340,7 +377,9 @@ impl Interpreter {
 
                         if condition {
                             let mut cloned_scope = scope.clone();
-                            if let Some(res) = self.execute_statements(&value.body, return_type, &mut cloned_scope) {
+                            if let Some(res) =
+                                self.execute_statements(&value.body, return_type, &mut cloned_scope)
+                            {
                                 return Some(res);
                             }
                             scope.update_scope(cloned_scope);
@@ -352,7 +391,9 @@ impl Interpreter {
                 Statement::Else(value) => {
                     if accept_else {
                         let mut cloned_scope = scope.clone();
-                        if let Some(res) = self.execute_statements(&value.body, return_type, &mut cloned_scope) {
+                        if let Some(res) =
+                            self.execute_statements(&value.body, return_type, &mut cloned_scope)
+                        {
                             return Some(res);
                         }
                         scope.update_scope(cloned_scope);
@@ -392,37 +433,36 @@ impl Interpreter {
                     );
                 }
                 Statement::Return(value) => match return_type {
-                    Some(ret_type) => {
-                        match value {
-                            Some(v) => return self.execute_expression_and_validate_type(v, scope, ret_type),
-                            None => panic!("Expected a value to be returned.")
+                    Some(ret_type) => match value {
+                        Some(v) => {
+                            return self.execute_expression_and_validate_type(v, scope, ret_type)
                         }
+                        None => panic!("Expected a value to be returned."),
                     },
                     None => {
                         if value.is_some() {
                             panic!("Returned value, but function doesn't accept it")
                         }
-                        return None
+                        return None;
                     }
                 },
                 Statement::Assign(value) => {
                     let expr_scope = scope.clone(); //TODO search another way
-                    self.assign_value(
-                        &value.variable,
-                        &value.expression,
-                        scope,
-                        &expr_scope
-                    );
+                    self.assign_value(&value.variable, &value.expression, scope, &expr_scope);
                 }
                 Statement::While(value) => {
+                    //TODO implement break/continue statements
                     let mut cloned_scope = scope.clone();
-                    while match self
-                        .execute_expression_and_expect_literal(&value.condition, &mut cloned_scope)?
-                    {
+                    while match self.execute_expression_and_expect_literal(
+                        &value.condition,
+                        &mut cloned_scope,
+                    )? {
                         Literal::Boolean(v) => v,
                         _ => panic!("Expected a valid condition"),
                     } {
-                        if let Some(v) = self.execute_statements(&value.body, return_type, &mut cloned_scope) {
+                        if let Some(v) =
+                            self.execute_statements(&value.body, return_type, &mut cloned_scope)
+                        {
                             return Some(v);
                         }
                     }
@@ -430,35 +470,45 @@ impl Interpreter {
                 }
                 Statement::Scope(value) => {
                     let mut cloned_scope = scope.clone();
-                    if let Some(v) = self.execute_statements(&value.body, return_type, &mut cloned_scope) {
+                    if let Some(v) =
+                        self.execute_statements(&value.body, return_type, &mut cloned_scope)
+                    {
                         return Some(v);
                     }
                     scope.update_scope(cloned_scope);
                 }
                 Statement::For(value) => {
+                    //TODO implement break/continue statements
                     let val = self.execute_expression(&value.values, scope)?;
                     let value_type = Type::get_type_of_value(&val);
                     let mut cloned_scope = scope.clone();
-                    cloned_scope.register_variable(&value.variable, Variable {
-                        value_type,
-                        value: Value::Literal(Literal::Null),
-                    });
+                    cloned_scope.register_variable(
+                        &value.variable,
+                        Variable {
+                            value_type,
+                            value: Value::Literal(Literal::Null),
+                        },
+                    );
                     match val {
                         Value::Array(values) => {
                             for v in values {
                                 cloned_scope.get_mut_variable(&value.variable)?.value = v;
-                                if let Some(v) = self.execute_statements(&value.body, return_type, &mut cloned_scope) {
+                                if let Some(v) = self.execute_statements(
+                                    &value.body,
+                                    return_type,
+                                    &mut cloned_scope,
+                                ) {
                                     return Some(v);
                                 }
                             }
 
                             scope.update_scope(cloned_scope);
                         }
-                        _ => panic!("Expected a array value for iteration")
+                        _ => panic!("Expected a array value for iteration"),
                     }
                 }
-                _ => {
-                    panic!(format!("Statement not implemented: {:?}", statement));
+                Statement::Continue | Statement::Break => {
+                    panic!("This statement is not allowed here!");
                 }
             };
 
@@ -472,28 +522,34 @@ impl Interpreter {
         None
     }
 
-    fn execute_expression_and_expect_number(&self, expression: &Expression, scope: &Scope) -> usize {
+    fn execute_expression_and_expect_number(
+        &self,
+        expression: &Expression,
+        scope: &Scope,
+    ) -> usize {
         match self.execute_expression_and_expect_literal(expression, scope) {
             Some(v) => match v {
                 Literal::Number(n) => n,
-                literal => panic!("Expected a number but got {:?}", literal)
+                literal => panic!("Expected a number but got {:?}", literal),
             },
-            None => panic!("No value found! Expected a number!")
+            None => panic!("No value found! Expected a number!"),
         }
     }
 
-    fn get_variable<'a>(&self, path: &VariablePath, scope: &'a mut Scope) -> Option<(&'a mut Value, &'a Type)> {
+    fn get_variable<'a>(
+        &self,
+        path: &VariablePath,
+        scope: &'a mut Scope,
+    ) -> Option<(&'a mut Value, &'a Type)> {
         match path {
             VariablePath::Variable(v) => {
                 let var = scope.get_mut_variable(v)?;
                 Some((&mut var.value, &var.value_type))
-            },
+            }
             VariablePath::SubVariable(left, right) => {
                 let left_var = self.get_variable(left, scope)?;
                 match left_var.0 {
-                    Value::Structure(_, ref mut values) => {
-                        self.get_variable(right, values)
-                    }
+                    Value::Structure(_, ref mut values) => self.get_variable(right, values),
                     _ => panic!("Expected a Structure value, how is it possible ?"),
                 }
             }
@@ -507,27 +563,36 @@ impl Interpreter {
                             Type::Array(ref v) => v,
                             _ => panic!("Invalid type for array call"),
                         };
-                        return Some((&mut values[i], value_type)) //TODO verify if type is tuple.1 is same as values[i]
+                        return Some((&mut values[i], value_type)); //TODO verify if type is tuple.1 is same as values[i]
                     }
-                    val => panic!("Expected a array value but got {:?}", val)
+                    val => panic!("Expected a array value but got {:?}", val),
                 }
             }
         }
     }
 
-    fn assign_value(&self, path: &VariablePath, expression_value: &Expression, scope: &mut Scope, expression_scope: &Scope) {
+    fn assign_value(
+        &self,
+        path: &VariablePath,
+        expression_value: &Expression,
+        scope: &mut Scope,
+        expression_scope: &Scope,
+    ) {
         let value = match self.execute_expression(&expression_value, expression_scope) {
             Some(v) => v,
-            None => panic!("No value returned from this expression!")
+            None => panic!("No value returned from this expression!"),
         };
         let (var_value, var_type) = match self.get_variable(path, scope) {
             Some(v) => v,
-            None => panic!("No variable found for this path: {:?}", path)
+            None => panic!("No variable found for this path: {:?}", path),
         };
 
         let value_type = Type::get_type_of_value(&value);
         if *var_type != value_type {
-            panic!("Invalid type of value for this variable. Got {:?} but expected {:?}", value_type, var_type);
+            panic!(
+                "Invalid type of value for this variable. Got {:?} but expected {:?}",
+                value_type, var_type
+            );
         }
 
         *var_value = value;
@@ -587,7 +652,7 @@ impl Interpreter {
     ) -> Option<Value> {
         let value = match self.execute_expression(expr, scope) {
             Some(v) => v,
-            None => panic!("Expected a value, but nothing is returned!")
+            None => panic!("Expected a value, but nothing is returned!"),
         };
         let _type = Type::get_type_of_value(&value);
         if _type != *value_type {
@@ -670,15 +735,18 @@ impl Interpreter {
                                     Err(err) => panic!("No dynamic variable path found for this expression, error: {:?}", err)
                                 };
                                 let tuple = unsafe {
-                                        match self.get_variable(&path, &mut *(scope as *const _ as *mut _)) { //scope not mutable TODO
+                                    match self
+                                        .get_variable(&path, &mut *(scope as *const _ as *mut _))
+                                    {
+                                        //scope not mutable TODO
                                         Some(v) => v,
-                                        None => panic!("No variable found for path '{:?}'", path)
+                                        None => panic!("No variable found for path '{:?}'", path),
                                     }
                                 };
 
                                 self.execute_function_type(tuple.0, name, params, &values)
-                            },
-                            right => self.execute_expression(right, &values)
+                            }
+                            right => self.execute_expression(right, &values),
                         },
                         val => match right.as_ref() {
                             Expression::FunctionCall(name, params) => {
@@ -687,16 +755,22 @@ impl Interpreter {
                                     Err(err) => panic!("No dynamic variable path found for this expression, error: {:?}", err)
                                 };
                                 let tuple = unsafe {
-                                        match self.get_variable(&path, &mut *(scope as *const _ as *mut _)) { //scope not mutable TODO
+                                    match self
+                                        .get_variable(&path, &mut *(scope as *const _ as *mut _))
+                                    {
+                                        //scope not mutable TODO
                                         Some(v) => v,
-                                        None => panic!("No variable found for path '{:?}'", path)
+                                        None => panic!("No variable found for path '{:?}'", path),
                                     }
                                 };
 
                                 self.execute_function_type(tuple.0, name, params, scope)
                             }
-                            v => panic!("Got '{:?}' called on '{:?}', what is it supposed to do ?", v, val),
-                        }
+                            v => panic!(
+                                "Got '{:?}' called on '{:?}', what is it supposed to do ?",
+                                v, val
+                            ),
+                        },
                     },
                     Operator::OperatorAnd(left, right) => {
                         if let Some((left, right)) = self.get_booleans(left, right, scope) {
@@ -820,8 +894,8 @@ impl Interpreter {
                                 Literal::String(val) => Some(Value::Literal(Literal::String(
                                     format!("{}{}", "null", val),
                                 ))),
-                                _ => panic!("Error, only string is authorized on null")
-                            }
+                                _ => panic!("Error, only string is authorized on null"),
+                            },
                             _ => panic!("Error! Invalid type for + operator"),
                         }
                     }

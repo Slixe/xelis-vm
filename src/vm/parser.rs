@@ -182,7 +182,7 @@ pub enum ParserError {
     NoTokenFound,
     NoTypeOrValueFound(TokenValue),
     AlreadyRegistered(String),
-    ExpectedType(String)
+    ExpectedType(String),
 }
 
 pub type ParserResult<T> = Result<T, ParserError>;
@@ -216,18 +216,24 @@ impl Parser {
                     let entry = first.token == Token::Entry;
                     let function = self.read_function(entry)?;
                     if let Some(v) = self.functions.insert(function.name.clone(), function) {
-                        return Err(ParserError::AlreadyRegistered(format!("Function '{}' is already registered! Function name should be unique!", v.name)))
+                        return Err(ParserError::AlreadyRegistered(format!(
+                            "Function '{}' is already registered! Function name should be unique!",
+                            v.name
+                        )));
                     }
                 }
                 Token::Struct => {
                     let identifier = next_token!(self, Identifier);
                     next_token!(self, BraceOpen);
                     let parameters: Vec<Parameter> = self.read_parameters()?;
-                    if let Some(v) = self.structures.insert(identifier.value.clone(), Structure {
-                        name: identifier.value.clone(),
-                        parameters: parameters,
-                    }) {
-                        return Err(ParserError::AlreadyRegistered(format!("Structure '{}' is already registered! Structure name should be unique!", v.name)))
+                    if let Some(v) = self.structures.insert(
+                        identifier.value.clone(),
+                        Structure {
+                            name: identifier.value.clone(),
+                            parameters: parameters,
+                        },
+                    ) {
+                        return Err(ParserError::AlreadyRegistered(format!("Structure '{}' is already registered! Structure name should be unique!", v.name)));
                     }
                 }
                 Token::Const => {
@@ -255,12 +261,15 @@ impl Parser {
                         ));
                     }
 
-                    if let Some(v) = self.constants.insert(name.value.clone(), Constant {
-                        name: name.value.clone(),
-                        value_type: value_type,
-                        value: value,
-                    }) {
-                        return Err(ParserError::AlreadyRegistered(format!("Constant with name '{}' is already registered! Constant name should be unique!", v.name)))
+                    if let Some(v) = self.constants.insert(
+                        name.value.clone(),
+                        Constant {
+                            name: name.value.clone(),
+                            value_type: value_type,
+                            value: value,
+                        },
+                    ) {
+                        return Err(ParserError::AlreadyRegistered(format!("Constant with name '{}' is already registered! Constant name should be unique!", v.name)));
                     }
                 }
                 _ => {
@@ -455,7 +464,11 @@ impl Parser {
             next_token!(self);
             opt_ret_value = match self.get_type() {
                 Ok(val) => Some(val),
-                Err(_) => return Err(ParserError::ExpectedType(String::from("Expected a type after colon token"))),
+                Err(_) => {
+                    return Err(ParserError::ExpectedType(String::from(
+                        "Expected a type after colon token",
+                    )))
+                }
             };
         } else if current.token == Token::BraceOpen {
             if entry {

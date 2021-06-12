@@ -240,7 +240,7 @@ impl Lexer {
     fn next_token(&mut self) -> Option<TokenValue> {
         let first = self._current()?;
 
-        if first == ' ' || first == '\n' {
+        if first == ' ' || first == '\n' || first == ';' {
             if first == '\n' {
                 self.line += 1;
                 self.cursor += 1;

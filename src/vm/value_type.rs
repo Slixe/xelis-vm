@@ -1,6 +1,6 @@
+use super::interpreter::Value;
 use super::lexer::*;
 use super::parser::Structure;
-use super::interpreter::Value;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
