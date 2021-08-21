@@ -1,6 +1,6 @@
-use super::interpreter::Value;
-use super::lexer::*;
-use super::parser::Structure;
+use crate::interpreter::Value;
+use crate::lexer::*;
+use crate::parser::Structure;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -21,6 +21,7 @@ pub enum Type {
     Any,
     Structure(String),
     Array(Box<Type>),
+    //LibraryType(String, Box<Type>)
 }
 
 impl Type {

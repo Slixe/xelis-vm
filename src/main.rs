@@ -1,10 +1,14 @@
-mod vm;
+mod interpreter;
+mod lexer;
+mod parser;
+mod value_type;
+mod operator;
 
 use std::fs;
-use vm::interpreter::*;
-use vm::lexer::*;
-use vm::parser::*;
-use vm::value_type::{Literal, Type};
+use interpreter::*;
+use lexer::*;
+use parser::*;
+use value_type::{Literal, Type};
 
 fn println_func(values: Vec<Value>) -> Option<Value> {
     println!("{:?}", values);
@@ -43,43 +47,55 @@ fn say_hello(_: &mut Value, _: Vec<Value>) -> Option<Value> {
     None
 }
 
-fn main() {
-    let code: String =
-        fs::read_to_string("tests.xel").expect("Something went wrong reading the file");
-    let lexer = Lexer::new(code);
-    let tokens: Vec<TokenValue> = lexer.get();
+fn load_library(path: String) -> Library {
+    let program = build_program(&path);
+    Library::new(path, program)
+}
 
-    let parser = Parser::new(tokens);
-    let program = match parser.build_program() {
+fn build_program(path: &String) -> Program {
+    let code: String =
+    fs::read_to_string(path).expect("Something went wrong reading the file");
+    let lexer = Lexer::new(code);
+    let parser = Parser::new(lexer.get());
+    let program = match parser.build_program(load_library) {
         Ok(program) => program,
         Err(err) => panic!("Error while building program: {:?}", err),
     };
 
+    program
+}
+
+fn main() {
+    let program = build_program(&"tests.xel".into());
     println!("{}", serde_json::to_string_pretty(&program).unwrap());
 
     let mut env = Environment::new();
-    env.bind_native_function(String::from("println"), println_func, vec![Type::Any]); //print in terminal a string
-    env.bind_native_function_on_type(
-        Type::Array(Box::new(Type::Any)),
-        String::from("len"),
-        array_len,
-        vec![],
-    ); //return the len of array
-    env.bind_native_function_on_type(
-        Type::Array(Box::new(Type::Any)),
-        String::from("push"),
-        array_push,
-        vec![Type::Any],
-    ); //add value in array
-    env.bind_native_function_on_type(
-        Type::Structure(String::from("Test")),
-        String::from("say_hello"),
-        say_hello,
-        vec![],
-    );
+    {
+        env.bind_native_function(String::from("println"), println_func, vec![Type::Any]); //print in terminal a string
+        env.bind_native_function_on_type(
+            Type::Array(Box::new(Type::Any)),
+            String::from("len"),
+            array_len,
+            vec![],
+        ); //return the len of array
+        env.bind_native_function_on_type(
+            Type::Array(Box::new(Type::Any)),
+            String::from("push"),
+            array_push,
+            vec![Type::Any],
+        ); //add value in array
+        env.bind_native_function_on_type(
+            Type::Structure(String::from("Test")),
+            String::from("say_hello"),
+            say_hello,
+            vec![],
+        );
+    } //End environnement
 
+    //Testing
     let interpreter = Interpreter::new(program, env);
     for func in vec![
+        "lib_test",
         "for_each",
         "compute_with_constant",
         "while_test",
@@ -90,6 +106,7 @@ fn main() {
         "null_example",
         "scope_example",
         "variable_declaration",
+        "semicolon_example",
     ] {
         println!("executing entrypoint: {}", func);
         println!(

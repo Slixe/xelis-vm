@@ -1,0 +1,13 @@
+struct Vector {
+    x: number,
+    y: number,
+    z: number
+}
+
+func createVector(x: number, y: number, z: number): Vector {
+    return Vector {
+        x,
+        y,
+        z
+    }
+}

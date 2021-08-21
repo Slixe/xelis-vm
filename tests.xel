@@ -1,3 +1,34 @@
+import "lib.xel" as lib
+
+struct Vector {
+    x: number,
+    y: number,
+    z: number,
+    a: number
+}
+
+entry lib_test() {
+    let vector = create_lib_vector()
+    println(vector)
+    let vec = lib.Vector {
+        x: 0,
+        y: 24,
+        z: 37
+    }
+    println(vec)
+    println(test_different_vector(vector)) //TODO Fix this
+
+    return 0
+}
+
+func create_lib_vector(): lib.Vector {
+    return lib.createVector(1, 2, 3)
+}
+
+func test_different_vector(input: lib.Vector): Vector {
+    return input
+}
+
 entry for_each() {
     let array = [10, 20, 30]
     array.push(40)  //array.push(value) is a function registered on type Array.
@@ -18,7 +49,7 @@ entry compute_with_constant() {
 entry while_test() {
     let i = 10
     while i > 0 {
-        println(i + "")
+        println(i)
         i -= 1
     }
     return 0
@@ -106,4 +137,12 @@ entry variable_declaration() {
     let a_5 = 1_000_000_000 //Variable should start with at least a letter
     println(a_5)
     return 0
+}
+
+//Semi colon is accepted for better code readability, but optional as it doesn't change the way the code is executed, and will simply be ignored during the lexer.
+entry semicolon_example() {
+    let a = 10;
+    let b = 15;
+    println(a * b);
+    return 0;
 }

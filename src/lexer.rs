@@ -6,6 +6,7 @@ pub enum Token {
 
     CommentDoubleSlashes,
     CommentMultiline,
+    CommentMultilineEnd,
 
     BraceOpen,
     BraceClose,
@@ -58,6 +59,10 @@ pub enum Token {
     Null,
     True,
     False,
+
+    //import "lib.xel" as lib
+    Import, 
+    As
 }
 
 impl Token {
@@ -73,6 +78,7 @@ impl Token {
             "'" | "\"" => ValString,
             "//" => CommentDoubleSlashes,
             "/*" => CommentMultiline,
+            "*/" => CommentMultilineEnd,
 
             "{" => BraceOpen,
             "}" => BraceClose,
@@ -127,6 +133,8 @@ impl Token {
             "true" => True,
             "false" => False,
 
+            "import" => Import,
+            "as" => As,
             _ => return None,
         })
     }
@@ -286,19 +294,17 @@ impl Lexer {
                 value: value.iter().collect(),
             });
         } else if self.has_next() {
-            let chars: Vec<char> = vec![first, self.next()?]; //should not return
+            let chars: Vec<char> = vec![first, self.next()?]; //cannot return
             if let Some(value) = Token::value_of_characters(&chars) {
                 self._cursor_plus(2);
                 if value == Token::CommentDoubleSlashes {
-                    /*chars = */
                     self.read_while(|character: char| -> bool { character != '\n' });
-                    return None; //we don't save comments yet
+                    return None; //we don't save comments
                 }
-                /*else if value == Token::CommentMultiline { // TODO
-                    self.read_while(|character: char | -> bool {
-                        character != '*' && self.next()? != '/'
-                    });
-                }*/
+                else if value == Token::CommentMultiline {
+                    self.skip_multiline_comment();
+                    return None;
+                }
                 return Some(TokenValue {
                     line: self.line,
                     column: self.column,
@@ -350,6 +356,26 @@ impl Lexer {
         }
 
         return value;
+    }
+
+    fn skip_multiline_comment(&mut self) {
+        while self.has_current() {
+            match self.current() {
+                Some(c) => {
+                    if c == '*' {
+                        match self.current() {
+                            Some(c) => {
+                                if c == '/' {
+                                    break
+                                }
+                            }
+                            None => break
+                        }
+                    }
+                }
+                None => break
+            }
+        }
     }
 
     fn read_until(&mut self, delimiter: char) -> Vec<char> {

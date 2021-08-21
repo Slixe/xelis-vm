@@ -1,6 +1,6 @@
-use super::lexer::*;
-use super::operator::*;
-use super::value_type::*;
+use crate::lexer::*;
+use crate::operator::*;
+use crate::value_type::*;
 
 use serde::{Deserialize, Serialize};
 
@@ -32,6 +32,7 @@ pub enum Expression {
     Operator(Operator),
     Value(Literal),
     Variable(String),
+    LibraryCall(String),
     FunctionCall(String, Vec<Expression>),
     ArrayCall(Box<Expression>, Box<Expression>),
     ArrayConstructor(Vec<Expression>),
@@ -152,7 +153,7 @@ pub struct Function {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Structure {
     pub name: String,
-    pub parameters: Vec<Parameter>,
+    pub fields: HashMap<String, Type>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -170,6 +171,7 @@ pub struct Constant {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Program {
+    pub libraries: HashMap<String, Library>,
     pub structures: HashMap<String, Structure>,
     pub constants: HashMap<String, Constant>,
     pub functions: HashMap<String, Function>,
@@ -183,11 +185,37 @@ pub enum ParserError {
     NoTypeOrValueFound(TokenValue),
     AlreadyRegistered(String),
     ExpectedType(String),
+    UnknownFieldInStructure(String, String),
+    LibraryNameAlreadyRegistered(String),
 }
 
 pub type ParserResult<T> = Result<T, ParserError>;
 
 use std::cell::Cell;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Library {
+    path: String,
+    program: Program //TODO optimize
+}
+
+impl Library {
+    pub fn new(path: String, program: Program) -> Self {
+        Library { path, program }
+    }
+
+    pub fn get_path(&self) -> &String {
+        &self.path
+    }
+
+    pub fn get_program(&self) -> &Program {
+        &self.program
+    }
+
+    pub fn consume_program(self) -> Program {
+        self.program
+    }
+}
 
 pub struct Parser {
     cursor: Cell<usize>,
@@ -195,6 +223,7 @@ pub struct Parser {
     functions: HashMap<String, Function>,
     constants: HashMap<String, Constant>,
     structures: HashMap<String, Structure>,
+    libraries: HashMap<String, Library>,
 }
 
 impl Parser {
@@ -205,13 +234,23 @@ impl Parser {
             functions: HashMap::new(),
             constants: HashMap::new(),
             structures: HashMap::new(),
+            libraries: HashMap::new()
         }
     }
 
-    pub fn build_program(mut self) -> ParserResult<Program> {
+    pub fn build_program(mut self, load_library: fn(String) -> Library) -> ParserResult<Program> {
         while self.has_current() {
             let first = next_token!(self);
             match first.token {
+                Token::Import => {
+                    let from = next_token!(self, ValString).value.clone();
+                    next_token!(self, As);
+                    let name = next_token!(self, Identifier).value.clone();
+                    if self.libraries.contains_key(&name) {
+                        return Err(ParserError::LibraryNameAlreadyRegistered(name))
+                    }
+                    self.libraries.insert(name, load_library(from));
+                },
                 Token::Function | Token::Entry => {
                     let entry = first.token == Token::Entry;
                     let function = self.read_function(entry)?;
@@ -226,11 +265,20 @@ impl Parser {
                     let identifier = next_token!(self, Identifier);
                     next_token!(self, BraceOpen);
                     let parameters: Vec<Parameter> = self.read_parameters()?;
+                    let mut map = HashMap::new();
+                    for param in parameters.into_iter() {
+                        map.insert(param.name, param.value_type);
+                    }
+
+                    if self.libraries.contains_key(&identifier.value) {
+                        return Err(ParserError::LibraryNameAlreadyRegistered(identifier.value.clone()))
+                    }
+
                     if let Some(v) = self.structures.insert(
                         identifier.value.clone(),
                         Structure {
                             name: identifier.value.clone(),
-                            parameters: parameters,
+                            fields: map,
                         },
                     ) {
                         return Err(ParserError::AlreadyRegistered(format!("Structure '{}' is already registered! Structure name should be unique!", v.name)));
@@ -261,6 +309,10 @@ impl Parser {
                         ));
                     }
 
+                    if self.libraries.contains_key(&name.value) {
+                        return Err(ParserError::LibraryNameAlreadyRegistered(name.value.clone()))
+                    }
+
                     if let Some(v) = self.constants.insert(
                         name.value.clone(),
                         Constant {
@@ -282,6 +334,7 @@ impl Parser {
         }
 
         return Ok(Program {
+            libraries: self.libraries,
             structures: self.structures,
             constants: self.constants,
             functions: self.functions,
@@ -303,7 +356,7 @@ impl Parser {
         let mut last_expression: Option<Expression> = None;
         let mut operator: Option<&Token> = None;
         let mut state: ExpressionHelper = ExpressionHelper::Left;
-
+        let mut opt_library: Option<&Library> = None;
         let mut require_operator = false;
         let mut token = self.view_current()?;
         while require_operator == token.token.is_operator() {
@@ -334,7 +387,6 @@ impl Parser {
                                 ))
                             }
                         };
-
                         Expression::Value(Literal::Number(value))
                     }
                     Token::Null => Expression::Value(Literal::Null),
@@ -346,7 +398,6 @@ impl Parser {
                             Token::ParenthesisOpen => {
                                 next_token!(self);
                                 let function_name = token.value.clone();
-
                                 let mut expressions: Vec<Expression> = vec![];
                                 token = self.view_current()?;
                                 while token.token != Token::ParenthesisClose {
@@ -372,30 +423,52 @@ impl Parser {
                                 self.read_array_call(Expression::Variable(token.value.clone()))?
                             }
                             Token::BraceOpen => {
-                                let expr: Expression;
-                                if !self.structures.contains_key(&token.value) {
-                                    expr = Expression::Variable(token.value.clone());
-                                } else {
-                                    next_token!(self);
-                                    let mut params = HashMap::new();
-                                    let mut current = self.view_current()?;
-                                    while current.token != Token::BraceClose {
-                                        let field = next_token!(self, Identifier).value.clone();
-                                        next_token!(self, Colon);
-                                        let value = self.read_expression()?;
-                                        params.insert(field, value);
-                                        current = self.view_current()?;
-                                        if current.token == Token::Comma {
-                                            next_token!(self);
+                                let opt_struct: Option<&Structure> = match opt_library {
+                                    Some(v) => v.program.structures.get(&token.value),
+                                    None => self.structures.get(&token.value)
+                                };
+                                match opt_struct {
+                                    Some(structure) => {
+                                        next_token!(self);
+                                        let mut params = HashMap::new();
+                                        let mut current = self.view_current()?;
+                                        while current.token != Token::BraceClose {
+                                            let field = next_token!(self, Identifier).value.clone();
+                                            if !structure.fields.contains_key(&field) {
+                                                return Err(ParserError::UnknownFieldInStructure(structure.name.clone(), field));
+                                            }
                                             current = self.view_current()?;
+                                            if current.token == Token::Colon {
+                                                next_token!(self);
+                                                let value = self.read_expression()?;
+                                                params.insert(field, value);
+                                            } else { //we assume the variable name is same as field name
+                                                let var = Expression::Variable(field.clone());
+                                                params.insert(field, var);
+                                            }
+
+                                            current = self.view_current()?;
+                                            if current.token == Token::Comma {
+                                                next_token!(self);
+                                                current = self.view_current()?;
+                                            }
                                         }
+                                        next_token!(self, BraceClose);
+                                        Expression::Structure(token.value.clone(), params)
+                                    },
+                                    None => {
+                                        Expression::Variable(token.value.clone())
                                     }
-                                    next_token!(self, BraceClose);
-                                    expr = Expression::Structure(token.value.clone(), params);
                                 }
-                                expr
                             }
-                            _ => Expression::Variable(token.value.clone()),
+                            _ => {
+                                opt_library = self.libraries.get(&token.value);
+                                if opt_library.is_none() {
+                                    Expression::Variable(token.value.clone())
+                                } else {
+                                    Expression::LibraryCall(token.value.clone())
+                                }
+                            }
                         }
                     }
                     Token::ParenthesisOpen => {
@@ -464,10 +537,8 @@ impl Parser {
             next_token!(self);
             opt_ret_value = match self.get_type() {
                 Ok(val) => Some(val),
-                Err(_) => {
-                    return Err(ParserError::ExpectedType(String::from(
-                        "Expected a type after colon token",
-                    )))
+                Err(e) => {
+                    return Err(e)
                 }
             };
         } else if current.token == Token::BraceOpen {
@@ -763,8 +834,19 @@ impl Parser {
         } else {
             _type = match Type::get_type(&self.structures, current) {
                 Some(value) => Ok(value),
-                None => {
-                    return Err(ParserError::UnexpectedToken(
+                None => match self.libraries.get(&current.value) { //last chance: lib Type
+                    Some(lib) => {
+                        next_token!(self, Dot);
+                        let next = next_token!(self, Identifier);
+                        match Type::get_type(&lib.program.structures, next) {
+                            Some(v) => Ok(v),
+                            None => return Err(ParserError::UnexpectedToken(
+                                current.clone(),
+                                format!("Type '{}' from library '{}' not found!", next.value.clone(), current.value.clone()),
+                            ))
+                        }
+                    },
+                    None => return Err(ParserError::UnexpectedToken(
                         current.clone(),
                         String::from("Expected a valid type"),
                     ))

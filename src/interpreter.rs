@@ -1,6 +1,6 @@
-use super::operator::*;
-use super::parser::*;
-use super::value_type::*;
+use crate::value_type::*;
+use crate::parser::*;
+use crate::operator::*;
 
 use std::collections::HashMap;
 
@@ -111,19 +111,16 @@ pub struct Interpreter {
     functions: HashMap<String, FunctionType>,
     structures: HashMap<String, Structure>,
     type_fuctions: HashMap<Type, HashMap<String, FunctionType>>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Structure {
-    pub fields: HashMap<String, Type>,
+    libraries: HashMap<String, Interpreter>
 }
 
 #[derive(Debug, Clone)]
 pub enum Value {
     Array(Vec<Value>),
     Literal(Literal),
-    Structure(String, Scope),
+    Structure(String, Scope)
 }
+
 #[derive(Debug, Clone)]
 pub struct Variable {
     pub value: Value,
@@ -177,6 +174,7 @@ impl Interpreter {
             functions: environment.functions,
             structures: environment.structures,
             type_fuctions: environment.type_functions,
+            libraries: HashMap::new()
         };
 
         for (name, constant) in program.constants {
@@ -204,15 +202,15 @@ impl Interpreter {
         }
 
         for (name, structure) in program.structures {
-            if interpreter.functions.contains_key(&name) {
+            if interpreter.structures.contains_key(&name) {
                 panic!("Structure '{}' already registered!", name);
             }
 
-            let mut fields = HashMap::new();
-            for param in structure.parameters {
-                fields.insert(param.name, param.value_type);
-            }
-            interpreter.structures.insert(name, Structure { fields });
+            interpreter.structures.insert(name, structure);
+        }
+
+        for (name, library) in program.libraries {
+            interpreter.libraries.insert(name, Interpreter::new(library.consume_program(), Environment::new()));
         }
 
         return interpreter;
@@ -672,6 +670,7 @@ impl Interpreter {
                 Some(val) => Some(val.value.clone()),
                 None => panic!(format!("Variable '{}' not found. {:?}", val, scope)),
             },
+            Expression::LibraryCall(val) => panic!(format!("Library call on {} not authorized.", val)),
             Expression::Structure(name, expressions) => {
                 let structure = self.structures.get(name)?;
                 if structure.fields.len() != expressions.len() {
@@ -727,51 +726,59 @@ impl Interpreter {
             }
             Expression::Operator(operator) => {
                 match operator {
-                    Operator::Dot(left, right) => match self.execute_expression(left, scope)? {
-                        Value::Structure(_, values) => match right.as_ref() {
-                            Expression::FunctionCall(name, params) => {
-                                let path = match VariablePath::get_path_for_variable(*left.clone()) {
-                                    Ok(v) => v,
-                                    Err(err) => panic!("No dynamic variable path found for this expression, error: {:?}", err)
-                                };
-                                let tuple = unsafe {
-                                    match self
-                                        .get_variable(&path, &mut *(scope as *const _ as *mut _))
-                                    {
-                                        //scope not mutable TODO
-                                        Some(v) => v,
-                                        None => panic!("No variable found for path '{:?}'", path),
-                                    }
-                                };
-
-                                self.execute_function_type(tuple.0, name, params, &values)
+                    Operator::Dot(left, right) => match left.as_ref() {
+                        Expression::LibraryCall(lib) => {
+                            match self.libraries.get(lib) {
+                                Some(v) => v.execute_expression(right, scope),
+                                None => panic!(format!("Library {} called but wasn't found in libraries loaded!", lib))
                             }
-                            right => self.execute_expression(right, &values),
                         },
-                        val => match right.as_ref() {
-                            Expression::FunctionCall(name, params) => {
-                                let path = match VariablePath::get_path_for_variable(*left.clone()) {
-                                    Ok(v) => v,
-                                    Err(err) => panic!("No dynamic variable path found for this expression, error: {:?}", err)
-                                };
-                                let tuple = unsafe {
-                                    match self
-                                        .get_variable(&path, &mut *(scope as *const _ as *mut _))
-                                    {
-                                        //scope not mutable TODO
-                                        Some(v) => v,
-                                        None => panic!("No variable found for path '{:?}'", path),
-                                    }
-                                };
-
-                                self.execute_function_type(tuple.0, name, params, scope)
-                            }
-                            v => panic!(
-                                "Got '{:?}' called on '{:?}', what is it supposed to do ?",
-                                v, val
-                            ),
+                        _ => match self.execute_expression(left, scope)? {
+                            Value::Structure(_, values) => match right.as_ref() {
+                                Expression::FunctionCall(name, params) => {
+                                    let path = match VariablePath::get_path_for_variable(*left.clone()) {
+                                        Ok(v) => v,
+                                        Err(err) => panic!("No dynamic variable path found for this expression, error: {:?}", err)
+                                    };
+                                    let tuple = unsafe {
+                                        match self
+                                            .get_variable(&path, &mut *(scope as *const _ as *mut _))
+                                        {
+                                            //scope not mutable TODO
+                                            Some(v) => v,
+                                            None => panic!("No variable found for path '{:?}'", path),
+                                        }
+                                    };
+    
+                                    self.execute_function_type(tuple.0, name, params, &values)
+                                }
+                                right => self.execute_expression(right, &values),
+                            },
+                            val => match right.as_ref() {
+                                Expression::FunctionCall(name, params) => {
+                                    let path = match VariablePath::get_path_for_variable(*left.clone()) {
+                                        Ok(v) => v,
+                                        Err(err) => panic!("No dynamic variable path found for this expression, error: {:?}", err)
+                                    };
+                                    let tuple = unsafe {
+                                        match self
+                                            .get_variable(&path, &mut *(scope as *const _ as *mut _))
+                                        {
+                                            //scope not mutable TODO
+                                            Some(v) => v,
+                                            None => panic!("No variable found for path '{:?}'", path),
+                                        }
+                                    };
+    
+                                    self.execute_function_type(tuple.0, name, params, scope)
+                                }
+                                v => panic!(
+                                    "Got '{:?}' called on '{:?}', what is it supposed to do ?",
+                                    v, val
+                                ),
+                            },
                         },
-                    },
+                    }
                     Operator::OperatorAnd(left, right) => {
                         if let Some((left, right)) = self.get_booleans(left, right, scope) {
                             Some(Value::Literal(Literal::Boolean(left && right)))
