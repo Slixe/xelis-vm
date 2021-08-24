@@ -37,7 +37,7 @@ pub enum Expression {
     ArrayCall(Box<Expression>, Box<Expression>),
     ArrayConstructor(Vec<Expression>),
     SubExpression(Box<Expression>),
-    Structure(String, HashMap<String, Expression>),
+    Structure(Type, HashMap<String, Expression>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -171,7 +171,7 @@ pub struct Constant {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Program {
-    pub libraries: HashMap<String, Library>,
+    pub libraries: HashMap<String, String>,
     pub structures: HashMap<String, Structure>,
     pub constants: HashMap<String, Constant>,
     pub functions: HashMap<String, Function>,
@@ -184,9 +184,9 @@ pub enum ParserError {
     NoTokenFound,
     NoTypeOrValueFound(TokenValue),
     AlreadyRegistered(String),
-    ExpectedType(String),
     UnknownFieldInStructure(String, String),
     LibraryNameAlreadyRegistered(String),
+    LibraryNotFound(String),
 }
 
 pub type ParserResult<T> = Result<T, ParserError>;
@@ -204,15 +204,11 @@ impl Library {
         Library { path, program }
     }
 
-    pub fn get_path(&self) -> &String {
-        &self.path
+    pub fn get_path(self) -> String {
+        self.path
     }
 
-    pub fn get_program(&self) -> &Program {
-        &self.program
-    }
-
-    pub fn consume_program(self) -> Program {
+    pub fn get_program(self) -> Program {
         self.program
     }
 }
@@ -238,18 +234,21 @@ impl Parser {
         }
     }
 
-    pub fn build_program(mut self, load_library: fn(String) -> Library) -> ParserResult<Program> {
+    pub fn build_program(mut self, load_library: fn(String) -> Option<Library>) -> ParserResult<Program> {
         while self.has_current() {
             let first = next_token!(self);
             match first.token {
                 Token::Import => {
-                    let from = next_token!(self, ValString).value.clone();
+                    let from = next_token!(self, ValString);
                     next_token!(self, As);
                     let name = next_token!(self, Identifier).value.clone();
                     if self.libraries.contains_key(&name) {
                         return Err(ParserError::LibraryNameAlreadyRegistered(name))
                     }
-                    self.libraries.insert(name, load_library(from));
+                    match load_library(from.value.clone()) {
+                        Some(lib) => self.libraries.insert(name, lib),
+                        None => return Err(ParserError::LibraryNotFound(from.value.clone()))
+                    };
                 },
                 Token::Function | Token::Entry => {
                     let entry = first.token == Token::Entry;
@@ -333,8 +332,13 @@ impl Parser {
             }
         }
 
+        let mut libraries = HashMap::new();
+        for (name, lib) in self.libraries.into_iter() {
+            libraries.insert(name, lib.get_path());
+        }
+
         return Ok(Program {
-            libraries: self.libraries,
+            libraries,
             structures: self.structures,
             constants: self.constants,
             functions: self.functions,
@@ -356,7 +360,7 @@ impl Parser {
         let mut last_expression: Option<Expression> = None;
         let mut operator: Option<&Token> = None;
         let mut state: ExpressionHelper = ExpressionHelper::Left;
-        let mut opt_library: Option<&Library> = None;
+        let mut opt_library: Option<&String> = None;
         let mut require_operator = false;
         let mut token = self.view_current()?;
         while require_operator == token.token.is_operator() {
@@ -424,7 +428,7 @@ impl Parser {
                             }
                             Token::BraceOpen => {
                                 let opt_struct: Option<&Structure> = match opt_library {
-                                    Some(v) => v.program.structures.get(&token.value),
+                                    Some(v) => self.libraries.get(v).unwrap().program.structures.get(&token.value),
                                     None => self.structures.get(&token.value)
                                 };
                                 match opt_struct {
@@ -454,19 +458,27 @@ impl Parser {
                                             }
                                         }
                                         next_token!(self, BraceClose);
-                                        Expression::Structure(token.value.clone(), params)
+
+                                        let value_type = Type::Structure(token.value.clone());
+                                        match opt_library {
+                                            Some(lib) => {
+                                                state = ExpressionHelper::Left;
+                                                Expression::Structure(Type::LibraryType(String::from(lib), Box::new(value_type)), params)
+                                            }
+                                            None => Expression::Structure(value_type, params)
+                                        }
                                     },
                                     None => {
                                         Expression::Variable(token.value.clone())
                                     }
                                 }
                             }
-                            _ => {
-                                opt_library = self.libraries.get(&token.value);
-                                if opt_library.is_none() {
-                                    Expression::Variable(token.value.clone())
-                                } else {
+                            _ => { 
+                                if self.libraries.contains_key(&token.value) {
+                                    opt_library = Some(&token.value);
                                     Expression::LibraryCall(token.value.clone())
+                                } else {
+                                    Expression::Variable(token.value.clone())
                                 }
                             }
                         }
@@ -839,7 +851,7 @@ impl Parser {
                         next_token!(self, Dot);
                         let next = next_token!(self, Identifier);
                         match Type::get_type(&lib.program.structures, next) {
-                            Some(v) => Ok(v),
+                            Some(v) => Ok(Type::LibraryType(current.value.clone(), Box::new(v))),
                             None => return Err(ParserError::UnexpectedToken(
                                 current.clone(),
                                 format!("Type '{}' from library '{}' not found!", next.value.clone(), current.value.clone()),

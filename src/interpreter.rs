@@ -118,7 +118,7 @@ pub struct Interpreter {
 pub enum Value {
     Array(Vec<Value>),
     Literal(Literal),
-    Structure(String, Scope)
+    Structure(Type, Scope)
 }
 
 #[derive(Debug, Clone)]
@@ -167,14 +167,24 @@ impl Scope {
 }
 
 impl Interpreter {
-    pub fn new(program: Program, environment: Environment) -> Interpreter {
+    pub fn new(program: Program, environment: Environment, load_library: fn(String) -> Option<Library>) -> Interpreter {
+        let mut libraries = HashMap::new();
+        for (name, path) in program.libraries {
+            match load_library(path) {
+                Some(lib) => {
+                    libraries.insert(name, Interpreter::new(lib.get_program(), environment.clone(), load_library));
+                },
+                None => panic!(format!("Error, library imported as '{}' was not found!", name))
+            };
+        }
+
         //Environment have priority over program declaration
         let mut interpreter = Interpreter {
             constants: environment.scope,
             functions: environment.functions,
             structures: environment.structures,
             type_fuctions: environment.type_functions,
-            libraries: HashMap::new()
+            libraries: libraries
         };
 
         for (name, constant) in program.constants {
@@ -209,10 +219,6 @@ impl Interpreter {
             interpreter.structures.insert(name, structure);
         }
 
-        for (name, library) in program.libraries {
-            interpreter.libraries.insert(name, Interpreter::new(library.consume_program(), Environment::new()));
-        }
-
         return interpreter;
     }
 
@@ -231,19 +237,33 @@ impl Interpreter {
         self.execute_function(func, parameters)
     }
 
-    fn execute_function_and_params(
-        &self,
-        name: &String,
-        parameters: &Vec<Expression>,
-        scope: &Scope,
-    ) -> Option<Value> {
+    fn execute_function_params(&self, parameters: &Vec<Expression>, scope: &Scope) -> Vec<Value> {
         let mut values: Vec<Value> = vec![];
         for e in parameters {
-            values.push(self.execute_expression(&e, scope)?);
+            let value = match self.execute_expression(&e, scope) {
+                Some(v) => v,
+                None => panic!("Expression returned no value!")
+            };
+            values.push(value);
         }
 
-        let func = self.functions.get(name)?;
-        self.execute_function(&func, values)
+        values
+    }
+
+    fn execute_function_with_params(
+        &self,
+        name: &String,
+        parameters: Vec<Value>,
+    ) -> Option<Value> {
+        let func = match self.functions.get(name) {
+            Some(v) => v,
+            None => panic!("Function {} not found!", name)
+        };
+        if func.is_entry() { //Code cannot call entrypoint function, thats only for user!
+            panic!(format!("Function '{}' is an entrypoint!", name.clone()));
+        }
+
+        self.execute_function(&func, parameters)
     }
 
     fn execute_function(&self, func: &FunctionType, values: Vec<Value>) -> Option<Value> {
@@ -671,8 +691,25 @@ impl Interpreter {
                 None => panic!(format!("Variable '{}' not found. {:?}", val, scope)),
             },
             Expression::LibraryCall(val) => panic!(format!("Library call on {} not authorized.", val)),
-            Expression::Structure(name, expressions) => {
-                let structure = self.structures.get(name)?;
+            Expression::Structure(struct_type, expressions) => {
+                let structure: &Structure = match struct_type {
+                    Type::LibraryType(lib_name, t) => match self.libraries.get(lib_name) {
+                        Some(lib) => match t.as_ref() {
+                            Type::Structure(name) => match lib.structures.get(name) {
+                                Some(s) => s,
+                                None => panic!(format!("Structure type with name {} was not found in library {}!", name, lib_name))
+                            },
+                            _ => panic!("Invalid Type on library!")
+                        },
+                        None => panic!(format!("Library {} not found!", lib_name))
+                    },
+                    Type::Structure(name) => match self.structures.get(name) {
+                        Some(v) => v,
+                        None => panic!(format!("Structure with name {} not found", name))
+                    },
+                    _ => panic!("Only structure accepted!")
+                };
+                //let structure = self.structures.get(name)?;
                 if structure.fields.len() != expressions.len() {
                     panic!("Mismatch amount of fields for this structure");
                 }
@@ -681,7 +718,7 @@ impl Interpreter {
                 for (field, value_type) in &structure.fields {
                     let expr = match expressions.get(field) {
                         Some(v) => v,
-                        None => panic!("Field {} not found in Structure {}", field, name),
+                        None => panic!(format!("Field {} not found in Structure", field)),
                     };
                     let value =
                         self.execute_expression_and_validate_type(expr, scope, value_type)?;
@@ -694,7 +731,7 @@ impl Interpreter {
                     );
                 }
 
-                Some(Value::Structure(name.clone(), values))
+                Some(Value::Structure(struct_type.clone(), values))
             }
             Expression::ArrayCall(val, index) => match self.execute_expression(val, scope)? {
                 Value::Array(values) => {
@@ -722,14 +759,29 @@ impl Interpreter {
                 Some(Value::Array(values))
             }
             Expression::FunctionCall(func_name, params) => {
-                self.execute_function_and_params(func_name, params, scope)
+                self.execute_function_with_params(func_name, self.execute_function_params(params, scope))
             }
             Expression::Operator(operator) => {
                 match operator {
                     Operator::Dot(left, right) => match left.as_ref() {
                         Expression::LibraryCall(lib) => {
                             match self.libraries.get(lib) {
-                                Some(v) => v.execute_expression(right, scope),
+                                Some(lib_interpreter) => match right.as_ref() {
+                                    Expression::FunctionCall(func_name, params) => {
+                                        let values = self.execute_function_params(params, scope);
+                                        let mut wrapped_values = vec![];
+                                        for v in values {
+                                            wrapped_values.push(self.unwrap_lib_value(v, &lib));
+                                        }
+
+                                        let opt_ret_value = lib_interpreter.execute_function_with_params(func_name, wrapped_values);
+                                        match opt_ret_value {
+                                            Some(ret_value) => Some(self.wrap_lib_value(ret_value, lib.clone())), 
+                                            None => None
+                                        }
+                                    }, //TODO structure in parser, if lib.Vector -> LibraryType(...) not LibCall(LibraryType!!)
+                                    _ => panic!("not possible")
+                                },
                                 None => panic!(format!("Library {} called but wasn't found in libraries loaded!", lib))
                             }
                         },
@@ -916,6 +968,42 @@ impl Interpreter {
                 }
             }
             Expression::SubExpression(sub) => self.execute_expression(sub, scope),
+        }
+    }
+
+    fn wrap_lib_value(&self, value: Value, lib: String) -> Value {
+        match value {
+            Value::Structure(struct_type, scope) => Value::Structure(Type::LibraryType(lib, Box::new(struct_type)), scope),
+            Value::Array(values) => {
+                let mut vec: Vec<Value> = vec![];
+                for val in values {
+                    vec.push(self.wrap_lib_value(val, lib.clone()))
+                }
+                Value::Array(vec)
+            }
+            _ => value
+        }
+    }
+
+    fn unwrap_lib_value(&self, value: Value, lib: &String) -> Value {
+        match value {
+            Value::Structure(struct_type, scope) => match struct_type {
+                Type::LibraryType(lib_name, value_type) => {
+                    if lib_name != *lib {
+                        panic!(format!("Not same lib! Got {} expected {}", lib_name, lib));
+                    }
+                    Value::Structure(*value_type, scope)
+                }
+                _ => panic!("Unwrap lib value: error, not supported!")
+            },
+            Value::Array(values) => {
+                let mut vec: Vec<Value> = vec![];
+                for val in values {
+                    vec.push(self.unwrap_lib_value(val, lib))
+                }
+                Value::Array(vec)
+            }
+            _ => value
         }
     }
 }

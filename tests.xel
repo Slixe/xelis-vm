@@ -11,12 +11,15 @@ entry lib_test() {
     let vector = create_lib_vector()
     println(vector)
     let vec = lib.Vector {
-        x: 0,
+        x: 1,
         y: 24,
         z: 37
     }
     println(vec)
-    println(test_different_vector(vector)) //TODO Fix this
+    let test = lib.testVector(vec)
+    println(test)
+    println(lib.test_string("World!"))
+    println(lib.test_number(20))
 
     return 0
 }
@@ -25,7 +28,7 @@ func create_lib_vector(): lib.Vector {
     return lib.createVector(1, 2, 3)
 }
 
-func test_different_vector(input: lib.Vector): Vector {
+func test_different_vector(input: lib.Vector): lib.Vector {
     return input
 }
 

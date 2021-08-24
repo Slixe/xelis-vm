@@ -21,7 +21,7 @@ pub enum Type {
     Any,
     Structure(String),
     Array(Box<Type>),
-    //LibraryType(String, Box<Type>)
+    LibraryType(String, Box<Type>)
 }
 
 impl Type {
@@ -65,7 +65,8 @@ impl Type {
 
                 panic!("Expected at least one value to determine Array type!")
             }
-            Value::Structure(name, _) => Type::Structure(name.clone()),
+            Value::Structure(struct_type, _) => struct_type.clone()
+                //Type::Structure(name.clone()),
         }
     }
 }

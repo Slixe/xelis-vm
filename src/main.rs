@@ -47,9 +47,9 @@ fn say_hello(_: &mut Value, _: Vec<Value>) -> Option<Value> {
     None
 }
 
-fn load_library(path: String) -> Library {
+fn load_library(path: String) -> Option<Library> {
     let program = build_program(&path);
-    Library::new(path, program)
+    Some(Library::new(path, program))
 }
 
 fn build_program(path: &String) -> Program {
@@ -93,7 +93,7 @@ fn main() {
     } //End environnement
 
     //Testing
-    let interpreter = Interpreter::new(program, env);
+    let interpreter = Interpreter::new(program, env, load_library);
     for func in vec![
         "lib_test",
         "for_each",
