@@ -130,6 +130,7 @@ impl VariablePath {
 pub enum Statement {
     If(IfStatement),
     Else(ElseStatement),
+    ElseIf(IfStatement),
     While(WhileStatement),
     For(ForStatement),
     Expression(Expression),
@@ -661,9 +662,19 @@ impl Parser {
 
     fn read_statement_else(&self) -> ParserResult<Statement> {
         next_token!(self, Else);
-        let statements = self.read_body()?;
-
-        Ok(Statement::Else(ElseStatement { body: statements }))
+        if self.view_current()?.token == Token::If {
+            next_token!(self);
+            let condition = self.read_expression()?;
+            let statements = self.read_body()?;
+    
+            Ok(Statement::ElseIf(IfStatement {
+                condition: condition,
+                body: statements,
+            }))
+        } else {
+            let statements = self.read_body()?;
+            Ok(Statement::Else(ElseStatement { body: statements }))
+        }
     }
 
     fn read_statement_scope(&self) -> ParserResult<Statement> {

@@ -14,7 +14,6 @@ File extension is .xel
 ### Main Parts
  - [x] Lexer
  - [x] Parser
- - [ ] Verifier (type checking...)
  - [x] Interpreter 
  - [ ] Documentation
 

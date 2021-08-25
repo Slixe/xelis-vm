@@ -390,7 +390,7 @@ impl Interpreter {
                     {
                         let condition: bool = match result {
                             Literal::Boolean(value) => value,
-                            _ => panic!("Expected boolean result for this condition"),
+                            _ => panic!("Expected boolean result for this if condition"),
                         };
 
                         if condition {
@@ -406,8 +406,32 @@ impl Interpreter {
                         }
                     }
                 }
+                Statement::ElseIf(value) => {
+                    if accept_else {
+                        if let Some(result) = self.execute_expression_and_expect_literal(&value.condition, scope) {
+                            let condition: bool = match result {
+                                Literal::Boolean(value) => value,
+                                _ => panic!("Expected boolean result for this else if condition"),
+                            };
+
+                            if condition {
+                                accept_else = false;
+                                let mut cloned_scope = scope.clone();
+                                if let Some(res) =
+                                    self.execute_statements(&value.body, return_type, &mut cloned_scope)
+                                {
+                                    return Some(res);
+                                }
+                                scope.update_scope(cloned_scope);
+                            } else {
+                                accept_else = true;
+                            }
+                        }
+                    }
+                },
                 Statement::Else(value) => {
                     if accept_else {
+                        accept_else = false;
                         let mut cloned_scope = scope.clone();
                         if let Some(res) =
                             self.execute_statements(&value.body, return_type, &mut cloned_scope)
@@ -531,7 +555,7 @@ impl Interpreter {
             };
 
             match statement {
-                Statement::If(_) => {}
+                Statement::If(_) | Statement::ElseIf(_) => {}
                 _ => {
                     accept_else = false;
                 }
@@ -1004,6 +1028,32 @@ impl Interpreter {
                 Value::Array(vec)
             }
             _ => value
+        }
+    }
+}
+
+use std::fmt;
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Literal(l) => write!(f, "{}", l),
+            Value::Array(values) => {
+                write!(f, "[")?;
+
+                for value in values {
+                    write!(f, "{}, ", value)?;
+                }
+
+                write!(f, "]")
+            }
+            Value::Structure(struct_type, scope) => {
+                write!(f, "{} {{ ", struct_type)?;
+                for (key, value) in &scope.variables {
+                    write!(f, "{}: {}, ", key, value.value)?;
+                }
+                write!(f, "}}")
+            }
         }
     }
 }

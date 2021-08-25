@@ -1,0 +1,140 @@
+import "lib.xel" as lib
+
+entry lib_test() {
+    let vector = create_lib_vector()
+    println(vector)
+    let vec = lib.Vector {
+        x: 1,
+        y: 24,
+        z: 37
+    }
+    println(vec)
+    let test = lib.testVector(vec)
+    println(test)
+    println(lib.test_string("World!"))
+    println(lib.test_number(20))
+
+    return 0
+}
+
+func create_lib_vector(): lib.Vector {
+    return lib.createVector(1, 2, 3)
+}
+
+entry for_each() {
+    let array = [10, 20, 30]
+    array.push(40)  //array.push(value) is a function registered on type Array.
+    println("Array len: " + (array.len()))
+    for a in array { //for each on Array
+        println(a) //println is a native function
+    }
+    return 0
+}
+
+const GLOBAL_RATE: number = 5 * 15 * 10
+
+entry compute_with_constant() {
+    println("Global rate: " + GLOBAL_RATE)
+    return 0
+}
+
+entry while_test() {
+    let i = 10
+    while i > 0 {
+        println(i)
+        i -= 1
+    }
+    return 0
+}
+
+struct Order {
+    price: number,
+    quantity: number
+}
+
+struct User {
+    username: string,
+    orders: []Order //Order have to be registered BEFORE User struct
+}
+
+entry struct_example() {
+    let orders: []Order = [Order {
+        price: 3,
+        quantity: 140 
+    }]
+
+    let user = User {
+        username: "Slixe",
+        orders: orders
+    }
+    println("Total cost ($): " + ((user.orders[0].price) * (user.orders[0].quantity))) //TODO make the parentheses optional
+    return 0
+}
+
+func bar(a: number): number {
+    return a * 10
+}
+
+func foo(): number {
+    return bar(23) + 7 - 3
+}
+
+entry function_call_example() { //only func declared with "entry" are public function and can be called outside the program
+    println("Result: " + foo())
+    return 0
+}
+
+entry condition_example() {
+    let value = foo() == 234
+
+    if value {
+        println("That's true!")
+    } else {
+        println("well, no.")
+    }
+    return 0
+}
+
+struct Test {}
+
+entry func_on_struct() {
+    let test = Test {}
+    test.say_hello() //registered as a native function on Test struct
+    return 0
+}
+
+entry null_example() {
+    let test: Test
+    if test == null {
+        println("Test is null!")
+    } else {
+        println("Test is not null!")
+    }
+    return 0
+}
+
+entry scope_example() {
+    let a = 10
+    {
+        let b = a + 24
+        a = 15
+    }
+    println(a)
+    //println(b) //Can't work, because b is declared in another scope
+
+    return 0
+}
+
+entry variable_declaration() {
+    let a_5 = 1_000_000_000 //Variable should start with at least a letter
+    println(a_5)
+    return 0
+}
+
+//Semi colon is accepted for better code readability, but optional as it doesn't change the way the code is executed, and will simply be ignored during the lexer.
+entry semicolon_example() {
+    let a = 10;
+    let b = 15;
+    println(a * b);
+    return 0;
+}

@@ -4,6 +4,7 @@ use crate::parser::Structure;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter, Result};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub enum Literal {
@@ -11,6 +12,17 @@ pub enum Literal {
     String(String),
     Number(usize),
     Boolean(bool),
+}
+
+impl Display for Literal {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Literal::String(s) => write!(f, "{}", s),
+            Literal::Number(n) => write!(f, "{}", n),
+            Literal::Boolean(b) => write!(f, "{}", b),
+            Literal::Null => write!(f, "null")
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
@@ -66,7 +78,20 @@ impl Type {
                 panic!("Expected at least one value to determine Array type!")
             }
             Value::Structure(struct_type, _) => struct_type.clone()
-                //Type::Structure(name.clone()),
+        }
+    }
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Type::Any => write!(f, "Any"),
+            Type::Array(a) => write!(f, "[]{}", a),
+            Type::Boolean => write!(f, "Boolean"),
+            Type::Number => write!(f, "Number"),
+            Type::String => write!(f, "String"),
+            Type::Structure(name) => write!(f, "{}", name),
+            Type::LibraryType(lib, _type) => write!(f, "{}.{}", lib, _type)
         }
     }
 }

@@ -11,7 +11,7 @@ use parser::*;
 use value_type::{Literal, Type};
 
 fn println_func(values: Vec<Value>) -> Option<Value> {
-    println!("{:?}", values);
+    println!("{}", values[0]);
     None
 }
 
@@ -31,7 +31,7 @@ fn array_push(current_value: &mut Value, parameters: Vec<Value>) -> Option<Value
     let value_type = Type::get_type_of_value(value);
     if *current_type != value_type {
         panic!(
-            "Type is not valid for value, expected {:?} found {:?}",
+            "Type is not valid for value, expected {} found {}",
             current_type, value_type
         );
     }
@@ -48,7 +48,7 @@ fn say_hello(_: &mut Value, _: Vec<Value>) -> Option<Value> {
 }
 
 fn load_library(path: String) -> Option<Library> {
-    let program = build_program(&path);
+    let program = build_program(&format!("examples/{}", &path));
     Some(Library::new(path, program))
 }
 
@@ -66,8 +66,7 @@ fn build_program(path: &String) -> Program {
 }
 
 fn main() {
-    let program = build_program(&"tests.xel".into());
-    println!("{}", serde_json::to_string_pretty(&program).unwrap());
+    let program = build_program(&"examples/tests.xel".into());
 
     let mut env = Environment::new();
     {
@@ -110,8 +109,8 @@ fn main() {
     ] {
         println!("executing entrypoint: {}", func);
         println!(
-            "Value returned {:?}",
-            interpreter.run_function(func.to_string(), vec![])
+            "Value returned {}",
+            interpreter.run_function(func.to_string(), vec![]).unwrap()
         );
         println!("-------------------");
     }
