@@ -383,7 +383,7 @@ impl Parser {
                 let current_expression: Expression = match token.token {
                     Token::ValString => Expression::Value(Literal::String(token.value.clone())),
                     Token::ValNumber => {
-                        let value: usize = match token.value.parse() {
+                        let value = match token.value.parse() {
                             Ok(value) => value,
                             Err(_) => {
                                 return Err(ParserError::UnexpectedToken(

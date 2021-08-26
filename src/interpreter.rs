@@ -568,7 +568,7 @@ impl Interpreter {
         &self,
         expression: &Expression,
         scope: &Scope,
-    ) -> usize {
+    ) -> u64 {
         match self.execute_expression_and_expect_literal(expression, scope) {
             Some(v) => match v {
                 Literal::Number(n) => n,
@@ -605,7 +605,7 @@ impl Interpreter {
                             Type::Array(ref v) => v,
                             _ => panic!("Invalid type for array call"),
                         };
-                        return Some((&mut values[i], value_type)); //TODO verify if type is tuple.1 is same as values[i]
+                        return Some((&mut values[i as usize], value_type)); //TODO verify if type is tuple.1 is same as values[i]
                     }
                     val => panic!("Expected a array value but got {:?}", val),
                 }
@@ -645,7 +645,7 @@ impl Interpreter {
         left: &Expression,
         right: &Expression,
         scope: &Scope,
-    ) -> Option<(usize, usize)> {
+    ) -> Option<(u64, u64)> {
         if let (Literal::Number(left_val), Literal::Number(right_val)) = (
             self.execute_expression_and_expect_literal(left, scope)?,
             self.execute_expression_and_expect_literal(right, scope)?,
@@ -759,7 +759,7 @@ impl Interpreter {
             }
             Expression::ArrayCall(val, index) => match self.execute_expression(val, scope)? {
                 Value::Array(values) => {
-                    let i: usize = match self.execute_expression(index, scope)? {
+                    let i = match self.execute_expression(index, scope)? {
                         Value::Literal(l) => match l {
                             Literal::Number(n) => n,
                             _ => panic!("Expected number"),
@@ -767,7 +767,7 @@ impl Interpreter {
                         _ => panic!("Expected literal"),
                     };
 
-                    match values.get(i) {
+                    match values.get(i as usize) {
                         Some(v) => Some(v.clone()),
                         None => Some(Value::Literal(Literal::Null)),
                     }

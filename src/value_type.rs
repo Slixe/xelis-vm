@@ -10,7 +10,7 @@ use std::fmt::{Display, Formatter, Result};
 pub enum Literal {
     Null,
     String(String),
-    Number(usize),
+    Number(u64),
     Boolean(bool),
 }
 

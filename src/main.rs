@@ -17,7 +17,7 @@ fn println_func(values: Vec<Value>) -> Option<Value> {
 
 fn array_len(current_value: &mut Value, _: Vec<Value>) -> Option<Value> {
     match current_value {
-        Value::Array(values) => Some(Value::Literal(Literal::Number(values.len()))),
+        Value::Array(values) => Some(Value::Literal(Literal::Number(values.len() as u64))),
         _ => panic!("Should not happen!"),
     }
 }
@@ -66,8 +66,7 @@ fn build_program(path: &String) -> Program {
 }
 
 fn main() {
-    let program = build_program(&"examples/tests.xel".into());
-
+    let program = build_program(&"examples/factorial.xel".into());
     let mut env = Environment::new();
     {
         env.bind_native_function(String::from("println"), println_func, vec![Type::Any]); //print in terminal a string
@@ -92,8 +91,10 @@ fn main() {
     } //End environnement
 
     //Testing
+    println!("{}", serde_json::to_string_pretty(&program).unwrap());
     let interpreter = Interpreter::new(program, env, load_library);
     for func in vec![
+        "main",
         "lib_test",
         "for_each",
         "compute_with_constant",
