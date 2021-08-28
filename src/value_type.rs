@@ -13,7 +13,8 @@ pub enum Literal {
     String(String),
     Number(u64),
     Boolean(bool),
-    BigInt(BigInt),
+    Map(HashMap<String, Value>),
+    BigInt(BigInt)
 }
 
 impl Display for Literal {
@@ -23,6 +24,7 @@ impl Display for Literal {
             Literal::Number(n) => write!(f, "{}", n),
             Literal::Boolean(b) => write!(f, "{}", b),
             Literal::BigInt(n) => write!(f, "{}", n),
+            Literal::Map(_) => write!(f, "TODO"), //TODO Write map
             Literal::Null => write!(f, "null")
         }
     }
@@ -33,6 +35,7 @@ pub enum Type {
     String,
     Number,
     BigInt,
+    Map,
     Boolean,
     Any,
     Structure(String),
@@ -41,7 +44,8 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn get_type(structures: &HashMap<String, Structure>, value: &TokenValue) -> Option<Type> {
+
+    pub fn get_native_type(value: &TokenValue) -> Option<Type> {
         let _type = match value.token {
             Token::ValNumber => Type::Number,
             Token::ValString => Type::String,
@@ -51,18 +55,30 @@ impl Type {
                 "number" => Type::Number,
                 "bool" => Type::Boolean,
                 "bigInt" => Type::BigInt,
-                _ => {
-                    if structures.contains_key(&value.value) {
-                        return Some(Type::Structure(value.value.clone()));
-                    }
-
-                    return None;
-                }
+                "map" => Type::Map,
+                _ => return None
             },
             _ => return None,
         };
 
         Some(_type)
+    }
+
+    pub fn get_type(structures: &HashMap<String, Structure>, value: &TokenValue) -> Option<Type> {
+        if let Some(v) = Type::get_native_type(value) {
+            return Some(v)
+        }
+
+        match value.token {
+            Token::Identifier => {
+                    if structures.contains_key(&value.value) {
+                        return Some(Type::Structure(value.value.clone()));
+                    }
+
+                    return None;
+            },
+            _ => return None,
+        }
     }
 
     pub fn get_type_of_value(value: &Value) -> Type {
@@ -74,7 +90,8 @@ impl Type {
                 Literal::Boolean(_) => Type::Boolean,
                 Literal::Number(_) => Type::Number,
                 Literal::String(_) => Type::String,
-                Literal::BigInt(_) => Type::BigInt
+                Literal::BigInt(_) => Type::BigInt,
+                Literal::Map(_) => Type::Map
             },
             Value::Array(values) => {
                 if values.len() > 0 {
@@ -96,6 +113,7 @@ impl Display for Type {
             Type::Boolean => write!(f, "Boolean"),
             Type::Number => write!(f, "Number"),
             Type::BigInt => write!(f, "BigInt"),
+            Type::Map => write!(f, "Map"),
             Type::String => write!(f, "String"),
             Type::Structure(name) => write!(f, "{}", name),
             Type::LibraryType(lib, _type) => write!(f, "{}.{}", lib, _type)

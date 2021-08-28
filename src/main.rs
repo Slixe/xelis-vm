@@ -34,7 +34,7 @@ fn main() {
     let interpreter = Interpreter::new(program, Environment::default(), load_library);
     for func in vec![
         "main",
-        "lib_test",
+        /*"lib_test",
         "for_each",
         "compute_with_constant",
         "while_test",
@@ -45,7 +45,7 @@ fn main() {
         "null_example",
         "scope_example",
         "variable_declaration",
-        "semicolon_example",
+        "semicolon_example",*/
     ] {
         println!("executing entrypoint: {}", func);
         println!(

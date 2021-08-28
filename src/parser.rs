@@ -263,6 +263,9 @@ impl Parser {
                 }
                 Token::Struct => {
                     let identifier = next_token!(self, Identifier);
+                    if let Some(v) = Type::get_native_type(&identifier) {
+                        return Err(ParserError::AlreadyRegistered(format!("Invalid structure name '{}' is already registered! Structure name should be unique!", identifier.value))); 
+                    }
                     next_token!(self, BraceOpen);
                     let parameters: Vec<Parameter> = self.read_parameters()?;
                     let mut map = HashMap::new();

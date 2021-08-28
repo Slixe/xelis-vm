@@ -6,6 +6,7 @@ use crate::environment::Environment;
 use std::collections::HashMap;
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug)]
 pub struct Func {
@@ -51,20 +52,63 @@ pub struct Interpreter {
     libraries: HashMap<String, Interpreter>
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq)]
 pub enum Value {
     Array(Vec<Value>),
     Literal(Literal),
     Structure(Type, Scope)
 }
 
-#[derive(Debug, Clone)]
+impl PartialEq<Value> for Value {
+    fn eq(&self, other: &Value) -> bool {
+        match self {
+            Value::Array(values) => match other {
+                Value::Array(other_values) => {
+                    if values.len() != other_values.len() {
+                        return false
+                    }
+
+                    for i in 0..values.len() - 1 {
+                        if values[i] != other_values[i] {
+                            return false
+                        }
+                    }
+
+                    true
+                },
+                _ => false
+            },
+            Value::Literal(l) => match other {
+                Value::Literal(o) => l == o,
+                _ => false
+            },
+            Value::Structure(s, s_scope) => match other {
+                Value::Structure(o, o_scope) => {
+                    if s != o {
+                        return false
+                    }
+
+                    s_scope == o_scope
+                },
+                _ => false
+            }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Eq)]
 pub struct Variable {
     pub value: Value,
     pub value_type: Type,
 }
 
-#[derive(Debug, Clone)]
+impl PartialEq<Variable> for Variable {
+    fn eq(&self, other: &Variable) -> bool {
+        self.value_type != other.value_type || self.value != other.value
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Eq)]
 pub struct Scope {
     variables: HashMap<String, Variable>,
 }
@@ -100,6 +144,27 @@ impl Scope {
                 )),
             };
         }
+    }
+}
+
+impl PartialEq<Scope> for Scope {
+    fn eq(&self, other: &Scope) -> bool {
+        if self.variables.len() != other.variables.len() {
+            return false
+        }
+
+        for (key, value) in self.variables.iter() {
+            match other.variables.get(key) {
+                Some(v) => {
+                    if value != v {
+                        return false
+                    }
+                },
+                None => return false
+            }
+        }
+
+        true
     }
 }
 
@@ -978,6 +1043,7 @@ impl Interpreter {
                                 Literal::BigInt(val) => Some(Value::Literal(Literal::String(
                                     format!("{}{}", left_val, val)
                                 ))),
+                                Literal::Map(val) => panic!("Can't do operations on Map!"),
                                 Literal::Null => Some(Value::Literal(Literal::String(format!(
                                     "{}{}",
                                     left_val, "null"
@@ -995,7 +1061,13 @@ impl Interpreter {
                                 ))),
                                 _ => panic!("Only BigInt authorized")
                             }
-                            Literal::Boolean(_) => panic!("Error! Invalid type for + operator"),
+                            Literal::Map(_) => panic!("Can't do operations on Map!"),
+                            Literal::Boolean(b) => match right {
+                                Literal::String(s) => Some(Value::Literal(Literal::String(
+                                    format!("{}{}", b, s)
+                                ))),
+                                _ => panic!("Error! Invalid type for + operator")
+                            }
                         }
                     }
                     Operator::OperatorMinus(left, right) => {
