@@ -1,16 +1,11 @@
 use crate::value_type::*;
 use crate::parser::*;
 use crate::operator::*;
+use crate::environment::Environment;
 
 use std::collections::HashMap;
-
-#[derive(Clone)]
-pub struct Environment {
-    pub scope: Scope,
-    pub structures: HashMap<String, Structure>,
-    pub functions: HashMap<String, FunctionType>,
-    pub type_functions: HashMap<Type, HashMap<String, FunctionType>>,
-}
+use num_bigint::BigInt;
+use num_traits::identities::Zero;
 
 #[derive(Clone, Debug)]
 pub struct Func {
@@ -22,64 +17,6 @@ pub struct Func {
 pub struct FuncType {
     pub parameters: Vec<Type>,
     pub execution: fn(&mut Value, Vec<Value>) -> Option<Value>,
-}
-
-impl Environment {
-    pub fn new() -> Environment {
-        Environment {
-            scope: Scope::new(),
-            structures: HashMap::new(),
-            functions: HashMap::new(),
-            type_functions: HashMap::new(),
-        }
-    }
-
-    pub fn bind_native_function(
-        &mut self,
-        name: String,
-        function: fn(Vec<Value>) -> Option<Value>,
-        parameters: Vec<Type>,
-    ) {
-        if let Some(_) = self.functions.insert(
-            name,
-            FunctionType::Builtin(Func {
-                parameters: parameters,
-                execution: function,
-            }),
-        ) {
-            panic!("Function already exist!");
-        }
-    }
-
-    pub fn bind_native_function_on_type(
-        &mut self,
-        value_type: Type,
-        name: String,
-        function: fn(&mut Value, Vec<Value>) -> Option<Value>,
-        parameters: Vec<Type>,
-    ) {
-        let map: &mut HashMap<String, FunctionType> = match self.type_functions.get_mut(&value_type)
-        {
-            Some(v) => v,
-            None => {
-                self.type_functions
-                    .insert(value_type.clone(), HashMap::new());
-                match self.type_functions.get_mut(&value_type) {
-                    Some(v) => v,
-                    None => panic!("How is it possible ? Map is inserted on previous line!"),
-                }
-            }
-        };
-        if let Some(_) = map.insert(
-            name,
-            FunctionType::Type(FuncType {
-                parameters: parameters,
-                execution: function,
-            }),
-        ) {
-            panic!("Function already exist!");
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -640,7 +577,7 @@ impl Interpreter {
         *var_value = value;
     }
 
-    fn get_numbers(
+    /*fn get_numbers(
         &self,
         left: &Expression,
         right: &Expression,
@@ -650,11 +587,27 @@ impl Interpreter {
             self.execute_expression_and_expect_literal(left, scope)?,
             self.execute_expression_and_expect_literal(right, scope)?,
         ) {
-            return Some((left_val, right_val));
+            Some((left_val, right_val))
         } else {
-            panic!("Only number are allowed for multiply operator!");
+            None
         }
-    }
+    }*/
+
+    /*fn get_bigints(
+        &self,
+        left: &Expression,
+        right: &Expression,
+        scope: &Scope,
+    ) -> Option<(BigInt, BigInt)> {
+        if let (Literal::BigInt(left_val), Literal::BigInt(right_val)) = (
+            self.execute_expression_and_expect_literal(left, scope)?,
+            self.execute_expression_and_expect_literal(right, scope)?,
+        ) {
+            Some((left_val, right_val))
+        } else {
+            None
+        }
+    }*/
 
     fn get_booleans(
         &self,
@@ -666,9 +619,9 @@ impl Interpreter {
             self.execute_expression_and_expect_literal(left, scope)?,
             self.execute_expression_and_expect_literal(right, scope)?,
         ) {
-            return Some((left_val, right_val));
+            Some((left_val, right_val))
         } else {
-            panic!("Only boolean are allowed!");
+            None
         }
     }
 
@@ -882,66 +835,120 @@ impl Interpreter {
                         Some(Value::Literal(Literal::Boolean(left != right)))
                     }
                     Operator::OperatorGreaterThan(left, right) => {
-                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                            Some(Value::Literal(Literal::Boolean(left > right)))
-                        } else {
-                            panic!("Expected two numbers");
+                        match self.execute_expression_and_expect_literal(&left, scope)? {
+                            Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::BigInt(r) => Some(Value::Literal(Literal::Boolean(l > r))),
+                                _ => panic!("expected two bigInts!")
+                            }
+                            Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::Number(r) => Some(Value::Literal(Literal::Boolean(l > r))),
+                                _ => panic!("expected two numbers!")
+                            },
+                            _ => panic!("Expected number or bigint")
                         }
                     }
                     Operator::OperatorGreaterOrEqual(left, right) => {
-                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                            Some(Value::Literal(Literal::Boolean(left >= right)))
-                        } else {
-                            panic!("Expected two numbers");
+                        match self.execute_expression_and_expect_literal(&left, scope)? {
+                            Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::BigInt(r) => Some(Value::Literal(Literal::Boolean(l >= r))),
+                                _ => panic!("expected two bigInts!")
+                            }
+                            Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::Number(r) => Some(Value::Literal(Literal::Boolean(l >= r))),
+                                _ => panic!("expected two numbers!")
+                            },
+                            _ => panic!("Expected number or bigint")
                         }
                     }
                     Operator::OperatorLessThan(left, right) => {
-                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                            Some(Value::Literal(Literal::Boolean(left < right)))
-                        } else {
-                            panic!("Expected two numbers");
+                        match self.execute_expression_and_expect_literal(&left, scope)? {
+                            Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::BigInt(r) => Some(Value::Literal(Literal::Boolean(l < r))),
+                                _ => panic!("expected two bigInts!")
+                            }
+                            Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::Number(r) => Some(Value::Literal(Literal::Boolean(l < r))),
+                                _ => panic!("expected two numbers!")
+                            },
+                            _ => panic!("Expected number or bigint")
                         }
                     }
                     Operator::OperatorLessOrEqual(left, right) => {
-                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                            Some(Value::Literal(Literal::Boolean(left <= right)))
-                        } else {
-                            panic!("Expected two numbers");
+                        match self.execute_expression_and_expect_literal(&left, scope)? {
+                            Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::BigInt(r) => Some(Value::Literal(Literal::Boolean(l <= r))),
+                                _ => panic!("expected two bigInts!")
+                            }
+                            Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::Number(r) => Some(Value::Literal(Literal::Boolean(l <= r))),
+                                _ => panic!("expected two numbers!")
+                            },
+                            _ => panic!("Expected number or bigint")
                         }
                     }
                     Operator::OperatorModulo(left, right) => {
-                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                            Some(Value::Literal(Literal::Number(left % right)))
-                        } else {
-                            panic!("Expected two numbers");
+                        match self.execute_expression_and_expect_literal(&left, scope)? {
+                            Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::BigInt(r) => Some(Value::Literal(Literal::BigInt(l % r))),
+                                _ => panic!("expected two bigInts!")
+                            }
+                            Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::Number(r) => Some(Value::Literal(Literal::Number(l % r))),
+                                _ => panic!("expected two numbers!")
+                            },
+                            _ => panic!("Expected number or bigint")
                         }
                     }
                     Operator::OperatorBitwiseLeft(left, right) => {
-                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                            Some(Value::Literal(Literal::Number(left << right)))
-                        } else {
-                            panic!("Expected two numbers");
+                        match self.execute_expression_and_expect_literal(&left, scope)? {
+                            Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::BigInt(r) => Some(Value::Literal(Literal::BigInt(/*l << r*/ BigInt::zero()))), //TODO
+                                _ => panic!("expected two bigInts!")
+                            }
+                            Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::Number(r) => Some(Value::Literal(Literal::Number(l << r))),
+                                _ => panic!("expected two numbers!")
+                            },
+                            _ => panic!("Expected number or bigint")
                         }
                     }
                     Operator::OperatorBitwiseRight(left, right) => {
-                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                            Some(Value::Literal(Literal::Number(left >> right)))
-                        } else {
-                            panic!("Expected two numbers");
+                        match self.execute_expression_and_expect_literal(&left, scope)? {
+                            Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::BigInt(r) => Some(Value::Literal(Literal::BigInt(/*l >> r*/ BigInt::zero()))), //TODO
+                                _ => panic!("expected two bigInts!")
+                            }
+                            Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::Number(r) => Some(Value::Literal(Literal::Number(l >> r))),
+                                _ => panic!("expected two numbers!")
+                            },
+                            _ => panic!("Expected number or bigint")
                         }
                     }
                     Operator::OperatorMultiply(left, right) => {
-                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                            Some(Value::Literal(Literal::Number(left * right)))
-                        } else {
-                            panic!("Expected two numbers");
+                        match self.execute_expression_and_expect_literal(&left, scope)? {
+                            Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::BigInt(r) => Some(Value::Literal(Literal::BigInt(l * r))),
+                                _ => panic!("expected two bigInts!")
+                            }
+                            Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::Number(r) => Some(Value::Literal(Literal::Number(l * r))),
+                                _ => panic!("expected two numbers!")
+                            },
+                            _ => panic!("Expected number or bigint")
                         }
                     }
                     Operator::OperatorDivide(left, right) => {
-                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                            Some(Value::Literal(Literal::Number(left / right)))
-                        } else {
-                            panic!("Expected two numbers");
+                        match self.execute_expression_and_expect_literal(&left, scope)? {
+                            Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::BigInt(r) => Some(Value::Literal(Literal::BigInt(l / r))),
+                                _ => panic!("expected two bigInts!")
+                            }
+                            Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::Number(r) => Some(Value::Literal(Literal::Number(l / r))),
+                                _ => panic!("expected two numbers!")
+                            },
+                            _ => panic!("Expected number or bigint")
                         }
                     }
                     Operator::OperatorPlus(left, right) => {
@@ -968,6 +975,9 @@ impl Interpreter {
                                 Literal::Boolean(val) => Some(Value::Literal(Literal::String(
                                     format!("{}{}", left_val, val),
                                 ))),
+                                Literal::BigInt(val) => Some(Value::Literal(Literal::String(
+                                    format!("{}{}", left_val, val)
+                                ))),
                                 Literal::Null => Some(Value::Literal(Literal::String(format!(
                                     "{}{}",
                                     left_val, "null"
@@ -979,14 +989,26 @@ impl Interpreter {
                                 ))),
                                 _ => panic!("Error, only string is authorized on null"),
                             },
-                            _ => panic!("Error! Invalid type for + operator"),
+                            Literal::BigInt(left_val) => match right {
+                                Literal::BigInt(val) => Some(Value::Literal(Literal::BigInt(
+                                    left_val + val
+                                ))),
+                                _ => panic!("Only BigInt authorized")
+                            }
+                            Literal::Boolean(_) => panic!("Error! Invalid type for + operator"),
                         }
                     }
                     Operator::OperatorMinus(left, right) => {
-                        if let Some((left, right)) = self.get_numbers(left, right, scope) {
-                            Some(Value::Literal(Literal::Number(left - right)))
-                        } else {
-                            panic!("Expected two numbers");
+                        match self.execute_expression_and_expect_literal(&left, scope)? {
+                            Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::BigInt(r) => Some(Value::Literal(Literal::BigInt(l - r))),
+                                _ => panic!("expected two bigInts!")
+                            }
+                            Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
+                                Literal::Number(r) => Some(Value::Literal(Literal::Number(l - r))),
+                                _ => panic!("expected two numbers!")
+                            },
+                            _ => panic!("Expected number or bigint")
                         }
                     }
                 }

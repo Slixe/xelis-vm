@@ -5,6 +5,7 @@ use crate::parser::Structure;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Result};
+use num_bigint::BigInt;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub enum Literal {
@@ -12,6 +13,7 @@ pub enum Literal {
     String(String),
     Number(u64),
     Boolean(bool),
+    BigInt(BigInt),
 }
 
 impl Display for Literal {
@@ -20,6 +22,7 @@ impl Display for Literal {
             Literal::String(s) => write!(f, "{}", s),
             Literal::Number(n) => write!(f, "{}", n),
             Literal::Boolean(b) => write!(f, "{}", b),
+            Literal::BigInt(n) => write!(f, "{}", n),
             Literal::Null => write!(f, "null")
         }
     }
@@ -29,6 +32,7 @@ impl Display for Literal {
 pub enum Type {
     String,
     Number,
+    BigInt,
     Boolean,
     Any,
     Structure(String),
@@ -46,6 +50,7 @@ impl Type {
                 "string" => Type::String,
                 "number" => Type::Number,
                 "bool" => Type::Boolean,
+                "bigInt" => Type::BigInt,
                 _ => {
                     if structures.contains_key(&value.value) {
                         return Some(Type::Structure(value.value.clone()));
@@ -69,6 +74,7 @@ impl Type {
                 Literal::Boolean(_) => Type::Boolean,
                 Literal::Number(_) => Type::Number,
                 Literal::String(_) => Type::String,
+                Literal::BigInt(_) => Type::BigInt
             },
             Value::Array(values) => {
                 if values.len() > 0 {
@@ -89,6 +95,7 @@ impl Display for Type {
             Type::Array(a) => write!(f, "[]{}", a),
             Type::Boolean => write!(f, "Boolean"),
             Type::Number => write!(f, "Number"),
+            Type::BigInt => write!(f, "BigInt"),
             Type::String => write!(f, "String"),
             Type::Structure(name) => write!(f, "{}", name),
             Type::LibraryType(lib, _type) => write!(f, "{}.{}", lib, _type)

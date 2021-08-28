@@ -1,11 +1,12 @@
 entry main() {
-    println(factorial(20))
+    let a: bigInt = bigInt(140)
+    println(factorial(a))
     return 0
 }
 
-func factorial(n: number): number {
-    if n == 0 {
-        return 1
+func factorial(n: bigInt): bigInt {
+    if n == bigInt(0) {
+        return bigInt(1)
     }
-    return n*factorial(n - 1)
+    return n*factorial(n - bigInt(1))
 }

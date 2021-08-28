@@ -24,13 +24,13 @@ pub enum Operator {
     Dot(Box<Expression>, Box<Expression>),
 }
 
-use Operator::*;
 impl Operator {
     pub fn value_of(
         token: &Token,
         left: Box<Expression>,
         right: Box<Expression>,
     ) -> Option<Operator> {
+        use Operator::*;
         let value = match token {
             Token::OperatorEquals => OperatorEquals(left, right),
             Token::OperatorNotEquals => OperatorNotEquals(left, right),
