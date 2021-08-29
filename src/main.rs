@@ -30,7 +30,8 @@ fn build_program(path: &String) -> Program {
 }
 
 fn main() {
-    let program = build_program(&"examples/factorial.xel".into());
+    let program = build_program(&"examples/map.xel".into());
+    println!("{}", serde_json::to_string_pretty(&program).unwrap());
     let interpreter = Interpreter::new(program, Environment::default(), load_library);
     for func in vec![
         "main",

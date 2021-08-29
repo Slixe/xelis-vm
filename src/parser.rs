@@ -263,8 +263,8 @@ impl Parser {
                 }
                 Token::Struct => {
                     let identifier = next_token!(self, Identifier);
-                    if let Some(v) = Type::get_native_type(&identifier) {
-                        return Err(ParserError::AlreadyRegistered(format!("Invalid structure name '{}' is already registered! Structure name should be unique!", identifier.value))); 
+                    if Type::get_native_type(&identifier).is_some() {
+                        return Err(ParserError::AlreadyRegistered(format!("Invalid structure name '{}', this is a native Type! Structure name should be unique!", identifier.value))); 
                     }
                     next_token!(self, BraceOpen);
                     let parameters: Vec<Parameter> = self.read_parameters()?;
@@ -431,6 +431,7 @@ impl Parser {
                                 self.read_array_call(Expression::Variable(token.value.clone()))?
                             }
                             Token::BraceOpen => {
+                                
                                 let opt_struct: Option<&Structure> = match opt_library {
                                     Some(v) => self.libraries.get(v).unwrap().program.structures.get(&token.value),
                                     None => self.structures.get(&token.value)
@@ -473,7 +474,7 @@ impl Parser {
                                         }
                                     },
                                     None => {
-                                        Expression::Variable(token.value.clone())
+                                        Expression::Variable(token.value.clone()) //TODO return an error instead of variable expression
                                     }
                                 }
                             }

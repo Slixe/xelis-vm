@@ -4,7 +4,7 @@ use crate::operator::*;
 use crate::environment::Environment;
 
 use std::collections::HashMap;
-use num_bigint::BigInt;
+use num_bigint::{BigInt, ToBigInt};
 use num_traits::identities::Zero;
 use serde::{Deserialize, Serialize};
 
@@ -457,17 +457,24 @@ impl Interpreter {
                         if value.is_none() {
                             value = Some(match result {
                                 Type::Number => Value::Literal(Literal::Number(0)),
+                                Type::BigInt => Value::Literal(Literal::BigInt(0.to_bigint().unwrap())),
                                 _ => Value::Literal(Literal::Null),
                             });
                         }
                     }
 
-                    if value_type.is_none() {
-                        if let Some(v) = &value {
-                            value_type = Some(Type::get_type_of_value(&v));
+                    if let Some(v) = &value {
+                        match &value_type {
+                            Some(t) => {
+                                if *t != Type::get_type_of_value(v) {
+                                    panic!("Invalid value for type {}", t)
+                                }
+                            }
+                            None => {
+                                value_type = Some(Type::get_type_of_value(&v));
+                            }
                         }
                     }
-
                     scope.register_variable(
                         &var.name,
                         Variable {
@@ -1043,7 +1050,7 @@ impl Interpreter {
                                 Literal::BigInt(val) => Some(Value::Literal(Literal::String(
                                     format!("{}{}", left_val, val)
                                 ))),
-                                Literal::Map(val) => panic!("Can't do operations on Map!"),
+                                Literal::Map(_) => panic!("Can't do operations on Map!"),
                                 Literal::Null => Some(Value::Literal(Literal::String(format!(
                                     "{}{}",
                                     left_val, "null"

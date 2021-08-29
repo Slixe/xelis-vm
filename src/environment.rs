@@ -25,7 +25,6 @@ impl Environment {
 
     pub fn default() -> Environment {
         let mut env = Environment::new();
-
         env.bind_native_function(String::from("println"), println_func, vec![Type::Any]); //print in terminal a string
         env.bind_native_function_on_type(
             Type::Array(Box::new(Type::Any)),
@@ -39,7 +38,16 @@ impl Environment {
             array_push,
             vec![Type::Any],
         ); //add value in array
-        env.bind_native_function("bigInt".into(), bigInt, vec![Type::Any]);
+        env.bind_native_function("bigInt".into(), big_int, vec![Type::Any]); //transform string/number to bigInt
+
+        //Map implementation
+        env.bind_native_function(String::from("map"), map_new, vec![]);
+        env.bind_native_function_on_type(Type::Map, String::from("put"), map_put, vec![Type::String, Type::Any]);
+        env.bind_native_function_on_type(Type::Map, String::from("has"), map_has, vec![Type::String]);
+        env.bind_native_function_on_type(Type::Map, String::from("get"), map_get, vec![Type::String]);
+        env.bind_native_function_on_type(Type::Map, String::from("remove"), map_remove, vec![Type::String]);
+        env.bind_native_function_on_type(Type::Map, String::from("keys"), map_keys, vec![]);
+        env.bind_native_function_on_type(Type::Map, String::from("len"), map_len, vec![]);
 
         env
     }
@@ -124,7 +132,7 @@ fn array_push(current_value: &mut Value, mut parameters: Vec<Value>) -> Option<V
     None
 }
 
-fn bigInt(parameters: Vec<Value>) -> Option<Value> {
+fn big_int(parameters: Vec<Value>) -> Option<Value> {
     let value = &parameters[0];
     let res = match value {
         Value::Literal(l) => match l {
@@ -136,4 +144,80 @@ fn bigInt(parameters: Vec<Value>) -> Option<Value> {
     };
 
     Some(res)
+}
+
+fn get_map_from_value(current_value: &mut Value) -> &mut HashMap<String, Value> {
+    if let Value::Literal(l) = current_value {
+        if let Literal::Map(ref mut map) = l {
+            return map
+        }
+    }
+
+    panic!("Map not found!")
+}
+
+fn get_string_from_value(value: Value) -> String {
+    match value {
+        Value::Literal(l) => match l {
+            Literal::String(s) => s,
+            _ => panic!("Invalid map key! Expected a string")
+        },
+        _ => panic!("Invalid map key! Expected a literal!")
+    }
+}
+
+fn map_new(_: Vec<Value>) -> Option<Value> {
+    Some(Value::Literal(Literal::Map(HashMap::new())))
+}
+
+fn map_put(current_value: &mut Value, mut parameters: Vec<Value>) -> Option<Value> {
+    let key = get_string_from_value(parameters.remove(0));
+    let value = parameters.remove(0);
+
+    let map = get_map_from_value(current_value);
+    map.insert(key, value)
+}
+
+fn map_has(current_value: &mut Value, mut parameters: Vec<Value>) -> Option<Value> {
+    let map = get_map_from_value(current_value);
+    let key = get_string_from_value(parameters.remove(0));
+
+    Some(Value::Literal(Literal::Boolean(map.contains_key(&key))))
+}
+
+fn map_get(current_value: &mut Value, mut parameters: Vec<Value>) -> Option<Value> {
+    let map = get_map_from_value(current_value);
+    let key = get_string_from_value(parameters.remove(0));
+
+    match map.get(&key) {
+        Some(value) => Some(value.clone()),
+        None => Some(Value::Literal(Literal::Null))
+    }
+}
+
+fn map_remove(current_value: &mut Value, mut parameters: Vec<Value>) -> Option<Value> {
+    let map = get_map_from_value(current_value);
+    let key = get_string_from_value(parameters.remove(0));
+
+    match map.remove(&key) {
+        Some(value) => Some(value),
+        None => Some(Value::Literal(Literal::Null))
+    }
+}
+
+fn map_keys(current_value: &mut Value, _: Vec<Value>) -> Option<Value> {
+    let map = get_map_from_value(current_value);
+
+    let mut keys: Vec<Value> = vec![];
+    for key in map.keys() {
+        keys.push(Value::Literal(Literal::String(key.clone())));
+    }
+
+    Some(Value::Array(keys))
+}
+
+fn map_len(current_value: &mut Value, _: Vec<Value>) -> Option<Value> {
+    let map = get_map_from_value(current_value);
+
+    Some(Value::Literal(Literal::Number(map.len() as u64)))
 }
