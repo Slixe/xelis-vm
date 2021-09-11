@@ -59,6 +59,29 @@ pub enum Value {
     Structure(Type, Scope)
 }
 
+pub enum InterpreterError {
+    VariableAlreadyRegistered(String),
+    VariableNotFound(String),
+    LibraryNotFound(String),
+    NoValueReturned,
+    NoValueForConstant,
+    FunctionNotEntryPoint(String),
+    FunctionIsEntryPoint(String),
+    FunctionNotFound(String),
+    InvalidValueType,
+    FunctionAlreadyRegistered(String),
+    StructureAlreadyRegistered(String),
+    MismatchFunctionReturn,
+    InvalidFunctionType,
+    MismatchFunctionParameters,
+    ExpectedBoolean,
+    ExpectedArray,
+    ExpectedLiteral,
+    ExpectedNumber,
+}
+
+pub type InterpreterResult<T> = Result<T, InterpreterError>;
+
 impl PartialEq<Value> for Value {
     fn eq(&self, other: &Value) -> bool {
         match self {
@@ -120,30 +143,35 @@ impl Scope {
         }
     }
 
-    pub fn get_mut_variable(&mut self, name: &str) -> Option<&mut Variable> {
-        self.variables.get_mut(name)
+    pub fn get_mut_variable(&mut self, name: &str) -> InterpreterResult<&mut Variable> {
+        match self.variables.get_mut(name) {
+            Some(v) => Ok(v),
+            None => return Err(InterpreterError::VariableNotFound(name.into()))
+        }
     }
 
     pub fn get_variable(&self, name: &str) -> Option<&Variable> {
         self.variables.get(name)
     }
 
-    pub fn register_variable(&mut self, name: &str, value: Variable) {
-        if let Some(v) = self.variables.insert(name.to_string(), value) {
-            panic!("Variable '{}' already exist with value: {:?}", name, v);
+    pub fn register_variable(&mut self, name: &str, value: Variable) -> InterpreterResult<()> {
+        if self.variables.insert(name.to_string(), value).is_some() {
+            //panic!("Variable '{}' already exist with value: {:?}", name, v);
+            return Err(InterpreterError::VariableAlreadyRegistered(name.into()))
         }
+
+        Ok(())
     }
 
-    pub fn update_scope(&mut self, mut scope: Scope) {
+    pub fn update_scope(&mut self, mut scope: Scope) -> InterpreterResult<()> {
         for (key, val) in self.variables.iter_mut() {
             *val = match scope.variables.remove(key) {
                 Some(v) => v,
-                None => panic!(format!(
-                    "Variable '{}' not present in child scope! How ?",
-                    key
-                )),
+                None => return Err(InterpreterError::VariableNotFound(key.clone()))
             };
         }
+
+        Ok(())
     }
 }
 
@@ -169,14 +197,14 @@ impl PartialEq<Scope> for Scope {
 }
 
 impl Interpreter {
-    pub fn new(program: Program, environment: Environment, load_library: fn(String) -> Option<Library>) -> Interpreter {
-        let mut libraries = HashMap::new();
+    pub fn new(program: Program, environment: Environment, load_library: fn(String) -> Option<Library>) -> InterpreterResult<Interpreter> {
+        let mut libraries: HashMap<String, Interpreter> = HashMap::new();
         for (name, path) in program.libraries {
             match load_library(path) {
                 Some(lib) => {
-                    libraries.insert(name, Interpreter::new(lib.get_program(), environment.clone(), load_library));
+                    libraries.insert(name, Interpreter::new(lib.get_program(), environment.clone(), load_library)?);
                 },
-                None => panic!(format!("Error, library imported as '{}' was not found!", name))
+                None => return Err(InterpreterError::LibraryNotFound(name))//panic!(format!("Error, library imported as '{}' was not found!", name))
             };
         }
 
@@ -191,9 +219,9 @@ impl Interpreter {
 
         for (name, constant) in program.constants {
             let value =
-                match interpreter.execute_expression(&constant.value, &interpreter.constants) {
+                match interpreter.execute_expression(&constant.value, &interpreter.constants)? {
                     Some(v) => v,
-                    None => panic!("No value found for this constant"),
+                    None => return Err(InterpreterError::NoValueForConstant) //panic!("No value found for this constant"),
                 };
 
             let variable = Variable {
@@ -201,12 +229,13 @@ impl Interpreter {
                 value,
             };
 
-            interpreter.constants.register_variable(&name, variable);
+            interpreter.constants.register_variable(&name, variable)?;
         }
 
         for (name, function) in program.functions {
             if interpreter.functions.contains_key(&name) {
-                panic!("Function '{}' already registered!", name);
+                return Err(InterpreterError::FunctionAlreadyRegistered(name.clone()))
+                //panic!("Function '{}' already registered!", name);
             }
             interpreter
                 .functions
@@ -215,63 +244,65 @@ impl Interpreter {
 
         for (name, structure) in program.structures {
             if interpreter.structures.contains_key(&name) {
-                panic!("Structure '{}' already registered!", name);
+                return Err(InterpreterError::StructureAlreadyRegistered(name.clone()))
+                //panic!("Structure '{}' already registered!", name);
             }
 
             interpreter.structures.insert(name, structure);
         }
 
-        return interpreter;
+        Ok(interpreter)
     }
 
-    pub fn run_function(&self, entry: String, parameters: Vec<Value>) -> Option<Value> {
+    pub fn run_function(&self, entry: String, parameters: Vec<Value>) -> InterpreterResult<Option<Value>> {
         let func: &FunctionType = match self.functions.get(&entry) {
             Some(func) => func,
-            None => {
-                panic!(format!("Function '{}' not found", entry));
-            }
+            None => return Err(InterpreterError::FunctionNotFound(entry.clone()))
         };
 
         if !func.is_entry() {
-            panic!(format!("Function '{}' is not an entrypoint!", entry));
+            return Err(InterpreterError::FunctionNotEntryPoint(entry.clone()))
+            //panic!(format!("Function '{}' is not an entrypoint!", entry));
         }
 
         self.execute_function(func, parameters)
     }
 
-    fn execute_function_params(&self, parameters: &Vec<Expression>, scope: &Scope) -> Vec<Value> {
+    fn execute_function_params(&self, parameters: &Vec<Expression>, scope: &Scope) -> InterpreterResult<Vec<Value>> {
         let mut values: Vec<Value> = vec![];
         for e in parameters {
-            let value = match self.execute_expression(&e, scope) {
+            let value = match self.execute_expression(&e, scope)? {
                 Some(v) => v,
-                None => panic!("Expression returned no value!")
+                None => return Err(InterpreterError::NoValueReturned) //panic!("Expression returned no value!")
             };
             values.push(value);
         }
 
-        values
+        Ok(values)
     }
 
     fn execute_function_with_params(
         &self,
         name: &String,
         parameters: Vec<Value>,
-    ) -> Option<Value> {
+    ) -> InterpreterResult<Option<Value>> {
         let func = match self.functions.get(name) {
             Some(v) => v,
-            None => panic!("Function {} not found!", name)
+            None => return Err(InterpreterError::FunctionNotFound(name.clone()))//panic!("Function {} not found!", name)
         };
-        if func.is_entry() { //Code cannot call entrypoint function, thats only for user!
-            panic!(format!("Function '{}' is an entrypoint!", name.clone()));
+        if func.is_entry() { // Code cannot call entrypoint function, thats only for user!
+            return Err(InterpreterError::FunctionIsEntryPoint(name.clone()))
+            //panic!(format!("Function '{}' is an entrypoint!", name.clone()));
         }
 
         self.execute_function(&func, parameters)
     }
 
-    fn execute_function(&self, func: &FunctionType, values: Vec<Value>) -> Option<Value> {
+    fn execute_function(&self, func: &FunctionType, values: Vec<Value>) -> InterpreterResult<Option<Value>> {
         let types = func.get_parameters_type();
         if values.len() != types.len() {
-            panic!("Parameters / values length mismatch");
+            return Err(InterpreterError::MismatchFunctionParameters)
+            //panic!("Parameters / values length mismatch");
         }
 
         let mut i = 0;
@@ -279,16 +310,14 @@ impl Interpreter {
             let value_type = types[i];
             let value = &values[i];
             if Type::get_type_of_value(value) != *value_type && *value_type != Type::Any {
-                panic!(
-                    "Invalid value type for parameter {} expected {:?} found {:?}!",
-                    i, value_type, value
-                );
+                return Err(InterpreterError::InvalidValueType)
+                //panic!("Invalid value type for parameter {} expected {:?} found {:?}!", i, value_type, value);
             }
             i = i + 1;
         }
 
         match func {
-            FunctionType::Builtin(f) => (f.execution)(values),
+            FunctionType::Builtin(f) => Ok((f.execution)(values)),
             FunctionType::Custom(f) => {
                 let mut scope = self.constants.clone();
                 let mut i = 0;
@@ -300,19 +329,18 @@ impl Interpreter {
                             value_type: param.value_type.clone(),
                             value,
                         },
-                    );
+                    )?;
                     i += 1;
                 }
 
-                let result = self.execute_statements(&f.statements, &f.ret_value, &mut scope);
+                let result = self.execute_statements(&f.statements, &f.ret_value, &mut scope)?;
                 if result.is_some() != f.ret_value.is_some() {
-                    panic!(
-                        "Error on function, mismatch on returned value and function return type"
-                    );
+                    return Err(InterpreterError::MismatchFunctionReturn)
+                    //panic!("Error on function, mismatch on returned value and function return type");
                 }
-                result
+                Ok(result)
             }
-            _ => panic!("Invalid function type"),
+            _ => Err(InterpreterError::InvalidFunctionType),
         }
     }
 
@@ -336,7 +364,7 @@ impl Interpreter {
         function_name: &String,
         parameters: &Vec<Expression>,
         scope: &Scope,
-    ) -> Option<Value> {
+    ) -> InterpreterResult<Option<Value>> {
         let value_type = Type::get_type_of_value(&val);
         match self.get_function_type(&value_type) {
             Some(map) => {
@@ -345,32 +373,31 @@ impl Interpreter {
                         FunctionType::Type(f) => {
                             let mut values: Vec<Value> = vec![];
                             if f.parameters.len() != parameters.len() {
-                                panic!("Parameters / values length mismatch");
+                                return Err(InterpreterError::MismatchFunctionParameters)
+                                //panic!("Parameters / values length mismatch");
                             }
 
                             let mut i = 0;
                             while i < f.parameters.len() {
-                                let value = self.execute_expression(&parameters[i], scope)?;
+                                let value = self.execute_expression_expect_value(&parameters[i], scope)?;
                                 let value_type = Type::get_type_of_value(&value);
                                 let param_type = &f.parameters[i];
                                 if *param_type != Type::Any && value_type != *param_type {
-                                    panic!("Invalid value type for parameter {}, expected {:?} found {:?}", i, f.parameters[i], value_type);
+                                    return Err(InterpreterError::InvalidValueType)
+                                    //panic!("Invalid value type for parameter {}, expected {:?} found {:?}", i, f.parameters[i], value_type);
                                 }
                                 values.push(value);
                                 i += 1;
                             }
 
-                            (f.execution)(val, values)
+                            Ok((f.execution)(val, values))
                         }
-                        _ => panic!("Invalid function type"),
+                        _ => Err(InterpreterError::InvalidFunctionType) //panic!("Invalid function type"),
                     },
-                    None => panic!(
-                        "No function named '{}' found for type {:?} !",
-                        function_name, value_type
-                    ),
+                    None => Err(InterpreterError::FunctionNotFound(function_name.clone())) //panic!("No function named '{}' found for type {:?} !", function_name, value_type),
                 }
             }
-            None => panic!("No function found for type {:?} !", value_type),
+            None => Err(InterpreterError::FunctionNotFound(function_name.clone())) //panic!("No function found for type {:?} !", value_type),
         }
     }
 
@@ -379,55 +406,48 @@ impl Interpreter {
         statements: &Vec<Statement>,
         return_type: &Option<Type>,
         scope: &mut Scope,
-    ) -> Option<Value> {
+    ) -> InterpreterResult<Option<Value>> {
         let mut accept_else = false;
         for statement in statements {
             match statement {
                 Statement::Expression(exp) => {
-                    self.execute_expression(&exp, scope);
+                    self.execute_expression(&exp, scope)?;
                 }
                 Statement::If(value) => {
-                    if let Some(result) =
-                        self.execute_expression_and_expect_literal(&value.condition, scope)
-                    {
-                        let condition: bool = match result {
-                            Literal::Boolean(value) => value,
-                            _ => panic!("Expected boolean result for this if condition"),
-                        };
+                    let condition: bool = match self.execute_expression_and_expect_literal(&value.condition, scope)? {
+                        Literal::Boolean(value) => value,
+                        _ => return Err(InterpreterError::ExpectedBoolean) //panic!("Expected boolean result for this if condition"),
+                    };
 
-                        if condition {
-                            let mut cloned_scope = scope.clone();
-                            if let Some(res) =
-                                self.execute_statements(&value.body, return_type, &mut cloned_scope)
-                            {
-                                return Some(res);
-                            }
-                            scope.update_scope(cloned_scope);
-                        } else {
-                            accept_else = true;
+                    if condition {
+                        let mut cloned_scope = scope.clone();
+                        let res = self.execute_statements(&value.body, return_type, &mut cloned_scope)?;
+                        if res.is_some() {
+                            return Ok(res)
                         }
+                        scope.update_scope(cloned_scope)?;
+                    } else {
+                        accept_else = true;
                     }
                 }
                 Statement::ElseIf(value) => {
                     if accept_else {
-                        if let Some(result) = self.execute_expression_and_expect_literal(&value.condition, scope) {
-                            let condition: bool = match result {
-                                Literal::Boolean(value) => value,
-                                _ => panic!("Expected boolean result for this else if condition"),
-                            };
+                        let result = self.execute_expression_and_expect_literal(&value.condition, scope)?;
+                        let condition: bool = match result {
+                            Literal::Boolean(value) => value,
+                            _ => return Err(InterpreterError::ExpectedBoolean) //panic!("Expected boolean result for this else if condition"),
+                        };
 
-                            if condition {
-                                accept_else = false;
-                                let mut cloned_scope = scope.clone();
-                                if let Some(res) =
-                                    self.execute_statements(&value.body, return_type, &mut cloned_scope)
-                                {
-                                    return Some(res);
-                                }
-                                scope.update_scope(cloned_scope);
-                            } else {
-                                accept_else = true;
+                        if condition {
+                            accept_else = false;
+                            let mut cloned_scope = scope.clone();
+                            let res = self.execute_statements(&value.body, return_type, &mut cloned_scope)?;
+                            if res.is_some() {
+                                return Ok(res)
                             }
+                            scope.update_scope(cloned_scope)?;
+                        } else {
+                            accept_else = true;
                         }
                     }
                 },
@@ -435,12 +455,11 @@ impl Interpreter {
                     if accept_else {
                         accept_else = false;
                         let mut cloned_scope = scope.clone();
-                        if let Some(res) =
-                            self.execute_statements(&value.body, return_type, &mut cloned_scope)
-                        {
-                            return Some(res);
+                        let res = self.execute_statements(&value.body, return_type, &mut cloned_scope)?;
+                        if res.is_some() {
+                            return Ok(res)
                         }
-                        scope.update_scope(cloned_scope);
+                        scope.update_scope(cloned_scope)?;
                     }
                 }
                 Statement::Variable(var) => {
@@ -448,7 +467,7 @@ impl Interpreter {
                     let mut value_type: Option<Type> = None;
 
                     if let Some(result) = &var.value {
-                        value = self.execute_expression(result, scope);
+                        value = self.execute_expression(result, scope)?;
                     }
 
                     if let Some(result) = &var.value_type {
@@ -467,7 +486,8 @@ impl Interpreter {
                         match &value_type {
                             Some(t) => {
                                 if *t != Type::get_type_of_value(v) {
-                                    panic!("Invalid value for type {}", t)
+                                    return Err(InterpreterError::InvalidValueType)
+                                    //panic!("Invalid value for type {}", t)
                                 }
                             }
                             None => {
@@ -481,25 +501,25 @@ impl Interpreter {
                             value: value.unwrap(),
                             value_type: value_type.unwrap(),
                         },
-                    );
+                    )?;
                 }
                 Statement::Return(value) => match return_type {
                     Some(ret_type) => match value {
-                        Some(v) => {
-                            return self.execute_expression_and_validate_type(v, scope, ret_type)
-                        }
-                        None => panic!("Expected a value to be returned."),
+                        Some(v) => return Ok(Some(self.execute_expression_and_validate_type(v, scope, ret_type)?)),
+                        None => return Err(InterpreterError::MismatchFunctionReturn)
                     },
                     None => {
                         if value.is_some() {
-                            panic!("Returned value, but function doesn't accept it")
+                            return Err(InterpreterError::MismatchFunctionReturn)
+                            //panic!("Returned value, but function doesn't accept it")
                         }
-                        return None;
+
+                        return Ok(None)
                     }
                 },
                 Statement::Assign(value) => {
                     let expr_scope = scope.clone(); //TODO search another way
-                    self.assign_value(&value.variable, &value.expression, scope, &expr_scope);
+                    self.assign_value(&value.variable, &value.expression, scope, &expr_scope)?;
                 }
                 Statement::While(value) => {
                     //TODO implement break/continue statements
@@ -509,28 +529,27 @@ impl Interpreter {
                         &mut cloned_scope,
                     )? {
                         Literal::Boolean(v) => v,
-                        _ => panic!("Expected a valid condition"),
+                        _ => return Err(InterpreterError::ExpectedBoolean)//panic!("Expected a valid condition"),
                     } {
-                        if let Some(v) =
-                            self.execute_statements(&value.body, return_type, &mut cloned_scope)
+                        let res = self.execute_statements(&value.body, return_type, &mut cloned_scope)?;
+                        if res.is_some()
                         {
-                            return Some(v);
+                            return Ok(res)
                         }
                     }
-                    scope.update_scope(cloned_scope);
+                    scope.update_scope(cloned_scope)?;
                 }
                 Statement::Scope(value) => {
                     let mut cloned_scope = scope.clone();
-                    if let Some(v) =
-                        self.execute_statements(&value.body, return_type, &mut cloned_scope)
-                    {
-                        return Some(v);
+                    let res = self.execute_statements(&value.body, return_type, &mut cloned_scope)?;
+                    if res.is_some() {
+                        return Ok(res)
                     }
-                    scope.update_scope(cloned_scope);
+                    scope.update_scope(cloned_scope)?;
                 }
                 Statement::For(value) => {
                     //TODO implement break/continue statements
-                    let val = self.execute_expression(&value.values, scope)?;
+                    let val = self.execute_expression_expect_value(&value.values, scope)?;
                     let value_type = Type::get_type_of_value(&val);
                     let mut cloned_scope = scope.clone();
                     cloned_scope.register_variable(
@@ -539,23 +558,24 @@ impl Interpreter {
                             value_type,
                             value: Value::Literal(Literal::Null),
                         },
-                    );
+                    )?;
                     match val {
                         Value::Array(values) => {
                             for v in values {
                                 cloned_scope.get_mut_variable(&value.variable)?.value = v;
-                                if let Some(v) = self.execute_statements(
+                                let res = self.execute_statements(
                                     &value.body,
                                     return_type,
                                     &mut cloned_scope,
-                                ) {
-                                    return Some(v);
+                                )?;
+                                if res.is_some() {
+                                    return Ok(res)
                                 }
                             }
 
-                            scope.update_scope(cloned_scope);
+                            scope.update_scope(cloned_scope)?;
                         }
-                        _ => panic!("Expected a array value for iteration"),
+                        _ => return Err(InterpreterError::ExpectedArray) //panic!("Expected a array value for iteration"),
                     }
                 }
                 Statement::Continue | Statement::Break => {
@@ -570,20 +590,18 @@ impl Interpreter {
                 }
             };
         }
-        None
+
+        Ok(None)
     }
 
     fn execute_expression_and_expect_number(
         &self,
         expression: &Expression,
         scope: &Scope,
-    ) -> u64 {
-        match self.execute_expression_and_expect_literal(expression, scope) {
-            Some(v) => match v {
-                Literal::Number(n) => n,
-                literal => panic!("Expected a number but got {:?}", literal),
-            },
-            None => panic!("No value found! Expected a number!"),
+    ) -> InterpreterResult<u64> {
+        match self.execute_expression_and_expect_literal(expression, scope)? {
+            Literal::Number(n) => Ok(n),
+            _ => Err(InterpreterError::ExpectedNumber),
         }
     }
 
@@ -591,11 +609,11 @@ impl Interpreter {
         &self,
         path: &VariablePath,
         scope: &'a mut Scope,
-    ) -> Option<(&'a mut Value, &'a Type)> {
+    ) -> InterpreterResult<(&'a mut Value, &'a Type)> {
         match path {
             VariablePath::Variable(v) => {
                 let var = scope.get_mut_variable(v)?;
-                Some((&mut var.value, &var.value_type))
+                Ok((&mut var.value, &var.value_type))
             }
             VariablePath::SubVariable(left, right) => {
                 let left_var = self.get_variable(left, scope)?;
@@ -605,7 +623,7 @@ impl Interpreter {
                 }
             }
             VariablePath::Array(v, index) => {
-                let i = self.execute_expression_and_expect_number(index, scope);
+                let i = self.execute_expression_and_expect_number(index, scope)?;
                 let tuple = self.get_variable(v, scope)?;
 
                 match tuple.0 {
@@ -614,7 +632,7 @@ impl Interpreter {
                             Type::Array(ref v) => v,
                             _ => panic!("Invalid type for array call"),
                         };
-                        return Some((&mut values[i as usize], value_type)); //TODO verify if type is tuple.1 is same as values[i]
+                        return Ok((&mut values[i as usize], value_type)) //TODO verify if type is tuple.1 is same as values[i]
                     }
                     val => panic!("Expected a array value but got {:?}", val),
                 }
@@ -628,25 +646,21 @@ impl Interpreter {
         expression_value: &Expression,
         scope: &mut Scope,
         expression_scope: &Scope,
-    ) {
-        let value = match self.execute_expression(&expression_value, expression_scope) {
+    ) -> InterpreterResult<()> {
+        let value = match self.execute_expression(&expression_value, expression_scope)? {
             Some(v) => v,
             None => panic!("No value returned from this expression!"),
         };
-        let (var_value, var_type) = match self.get_variable(path, scope) {
-            Some(v) => v,
-            None => panic!("No variable found for this path: {:?}", path),
-        };
-
+        let (var_value, var_type) = self.get_variable(path, scope)?;
         let value_type = Type::get_type_of_value(&value);
         if *var_type != value_type {
-            panic!(
-                "Invalid type of value for this variable. Got {:?} but expected {:?}",
-                value_type, var_type
-            );
+            return Err(InterpreterError::InvalidValueType)
+            //panic!("Invalid type of value for this variable. Got {:?} but expected {:?}", value_type, var_type);
         }
 
         *var_value = value;
+
+        Ok(())
     }
 
     /*fn get_numbers(
@@ -686,14 +700,14 @@ impl Interpreter {
         left: &Expression,
         right: &Expression,
         scope: &Scope,
-    ) -> Option<(bool, bool)> {
+    ) -> InterpreterResult<(bool, bool)> {
         if let (Literal::Boolean(left_val), Literal::Boolean(right_val)) = (
             self.execute_expression_and_expect_literal(left, scope)?,
             self.execute_expression_and_expect_literal(right, scope)?,
         ) {
-            Some((left_val, right_val))
+            Ok((left_val, right_val))
         } else {
-            None
+            Err(InterpreterError::ExpectedLiteral)
         }
     }
 
@@ -701,13 +715,13 @@ impl Interpreter {
         &self,
         expr: &Expression,
         scope: &Scope,
-    ) -> Option<Literal> {
+    ) -> InterpreterResult<Literal> {
         match self.execute_expression(expr, scope)? {
-            Value::Literal(v) => Some(v),
-            _ => panic!(
-                "Only literal are allowed! Expression: {}",
-                serde_json::to_string_pretty(&expr).unwrap()
-            ),
+            Some(v) => match v {
+                Value::Literal(v) => Ok(v),
+                _ =>  return Err(InterpreterError::ExpectedLiteral) //panic!("Only literal are allowed! Expression: {}", serde_json::to_string_pretty(&expr).unwrap()),    
+            },
+            None => return Err(InterpreterError::ExpectedLiteral)
         }
     }
 
@@ -716,27 +730,32 @@ impl Interpreter {
         expr: &Expression,
         scope: &Scope,
         value_type: &Type,
-    ) -> Option<Value> {
-        let value = match self.execute_expression(expr, scope) {
+    ) -> InterpreterResult<Value> {
+        let value = match self.execute_expression(expr, scope)? {
             Some(v) => v,
-            None => panic!("Expected a value, but nothing is returned!"),
+            None => return Err(InterpreterError::NoValueReturned) //panic!("Expected a value, but nothing is returned!"),
         };
         let _type = Type::get_type_of_value(&value);
         if _type != *value_type {
-            panic!(
-                "Invalid value type got {:?} for value {:?} but expected type {:?}",
-                _type, value, value_type
-            );
+            return Err(InterpreterError::InvalidValueType)
+            //panic!("Invalid value type got {:?} for value {:?} but expected type {:?}", _type, value, value_type);
         }
 
-        Some(value)
+        Ok(value)
     }
 
-    fn execute_expression(&self, expr: &Expression, scope: &Scope) -> Option<Value> {
+    fn execute_expression_expect_value(&self, expr: &Expression, scope: &Scope) -> InterpreterResult<Value> {
+        match self.execute_expression(expr, scope)? {
+            Some(v) => Ok(v),
+            None => return Err(InterpreterError::NoValueReturned)
+        }
+    }
+
+    fn execute_expression(&self, expr: &Expression, scope: &Scope) -> InterpreterResult<Option<Value>> {
         match expr {
-            Expression::Value(val) => Some(Value::Literal(val.clone())),
+            Expression::Value(val) => Ok(Some(Value::Literal(val.clone()))),
             Expression::Variable(val) => match scope.get_variable(val) {
-                Some(val) => Some(val.value.clone()),
+                Some(val) => Ok(Some(val.value.clone())),
                 None => panic!(format!("Variable '{}' not found. {:?}", val, scope)),
             },
             Expression::LibraryCall(val) => panic!(format!("Library call on {} not authorized.", val)),
@@ -777,38 +796,31 @@ impl Interpreter {
                             value,
                             value_type: value_type.clone(),
                         },
-                    );
+                    )?;
                 }
 
-                Some(Value::Structure(struct_type.clone(), values))
+                Ok(Some(Value::Structure(struct_type.clone(), values)))
             }
-            Expression::ArrayCall(val, index) => match self.execute_expression(val, scope)? {
+            Expression::ArrayCall(val, index) => match self.execute_expression_expect_value(val, scope)? {
                 Value::Array(values) => {
-                    let i = match self.execute_expression(index, scope)? {
-                        Value::Literal(l) => match l {
-                            Literal::Number(n) => n,
-                            _ => panic!("Expected number"),
-                        },
-                        _ => panic!("Expected literal"),
-                    };
-
+                    let i = self.execute_expression_and_expect_number(index, scope)?;
                     match values.get(i as usize) {
-                        Some(v) => Some(v.clone()),
-                        None => Some(Value::Literal(Literal::Null)),
+                        Some(v) => Ok(Some(v.clone())),
+                        None => Ok(Some(Value::Literal(Literal::Null))),
                     }
                 }
-                _ => None,
+                _ => Ok(None),
             },
             Expression::ArrayConstructor(expressions) => {
                 let mut values: Vec<Value> = vec![];
                 for e in expressions {
-                    values.push(self.execute_expression(e, scope)?);
+                    values.push(self.execute_expression_expect_value(e, scope)?);
                 }
 
-                Some(Value::Array(values))
+                Ok(Some(Value::Array(values)))
             }
             Expression::FunctionCall(func_name, params) => {
-                self.execute_function_with_params(func_name, self.execute_function_params(params, scope))
+                self.execute_function_with_params(func_name, self.execute_function_params(params, scope)?)
             }
             Expression::Operator(operator) => {
                 match operator {
@@ -817,16 +829,16 @@ impl Interpreter {
                             match self.libraries.get(lib) {
                                 Some(lib_interpreter) => match right.as_ref() {
                                     Expression::FunctionCall(func_name, params) => {
-                                        let values = self.execute_function_params(params, scope);
+                                        let values = self.execute_function_params(params, scope)?;
                                         let mut wrapped_values = vec![];
                                         for v in values {
                                             wrapped_values.push(self.unwrap_lib_value(v, &lib));
                                         }
 
-                                        let opt_ret_value = lib_interpreter.execute_function_with_params(func_name, wrapped_values);
+                                        let opt_ret_value = lib_interpreter.execute_function_with_params(func_name, wrapped_values)?;
                                         match opt_ret_value {
-                                            Some(ret_value) => Some(self.wrap_lib_value(ret_value, lib.clone())), 
-                                            None => None
+                                            Some(ret_value) => Ok(Some(self.wrap_lib_value(ret_value, lib.clone()))),
+                                            None => Ok(None)
                                         }
                                     }, //TODO structure in parser, if lib.Vector -> LibraryType(...) not LibCall(LibraryType!!)
                                     _ => panic!("not possible")
@@ -834,24 +846,17 @@ impl Interpreter {
                                 None => panic!(format!("Library {} called but wasn't found in libraries loaded!", lib))
                             }
                         },
-                        _ => match self.execute_expression(left, scope)? {
+                        _ => match self.execute_expression_expect_value(left, scope)? {
                             Value::Structure(_, values) => match right.as_ref() {
                                 Expression::FunctionCall(name, params) => {
                                     let path = match VariablePath::get_path_for_variable(*left.clone()) {
                                         Ok(v) => v,
                                         Err(err) => panic!("No dynamic variable path found for this expression, error: {:?}", err)
                                     };
-                                    let tuple = unsafe {
-                                        match self
-                                            .get_variable(&path, &mut *(scope as *const _ as *mut _))
-                                        {
-                                            //scope not mutable TODO
-                                            Some(v) => v,
-                                            None => panic!("No variable found for path '{:?}'", path),
-                                        }
-                                    };
-    
-                                    self.execute_function_type(tuple.0, name, params, &values)
+                                    unsafe {
+                                        let tuple = self.get_variable(&path, &mut *(scope as *const _ as *mut _))?;
+                                        self.execute_function_type(tuple.0, name, params, &values)
+                                    }
                                 }
                                 right => self.execute_expression(right, &values),
                             },
@@ -861,17 +866,10 @@ impl Interpreter {
                                         Ok(v) => v,
                                         Err(err) => panic!("No dynamic variable path found for this expression, error: {:?}", err)
                                     };
-                                    let tuple = unsafe {
-                                        match self
-                                            .get_variable(&path, &mut *(scope as *const _ as *mut _))
-                                        {
-                                            //scope not mutable TODO
-                                            Some(v) => v,
-                                            None => panic!("No variable found for path '{:?}'", path),
-                                        }
-                                    };
-    
-                                    self.execute_function_type(tuple.0, name, params, scope)
+                                    unsafe {
+                                        let tuple = self.get_variable(&path, &mut *(scope as *const _ as *mut _))?;
+                                        self.execute_function_type(tuple.0, name, params, scope)
+                                    }
                                 }
                                 v => panic!(
                                     "Got '{:?}' called on '{:?}', what is it supposed to do ?",
@@ -881,39 +879,33 @@ impl Interpreter {
                         },
                     }
                     Operator::OperatorAnd(left, right) => {
-                        if let Some((left, right)) = self.get_booleans(left, right, scope) {
-                            Some(Value::Literal(Literal::Boolean(left && right)))
-                        } else {
-                            panic!("Expected two booleans")
-                        }
+                        let (left, right) = self.get_booleans(left, right, scope)?;
+                        Ok(Some(Value::Literal(Literal::Boolean(left && right))))
                     }
                     Operator::OperatorOr(left, right) => {
-                        if let Some((left, right)) = self.get_booleans(left, right, scope) {
-                            Some(Value::Literal(Literal::Boolean(left || right)))
-                        } else {
-                            panic!("Expected two booleans")
-                        }
+                        let (left, right) = self.get_booleans(left, right, scope)?;
+                        Ok(Some(Value::Literal(Literal::Boolean(left || right))))
                     }
                     Operator::OperatorEquals(left, right) => {
                         let left = self.execute_expression_and_expect_literal(&left, scope)?;
                         let right = self.execute_expression_and_expect_literal(&right, scope)?;
 
-                        Some(Value::Literal(Literal::Boolean(left == right)))
+                        Ok(Some(Value::Literal(Literal::Boolean(left == right))))
                     }
                     Operator::OperatorNotEquals(left, right) => {
                         let left = self.execute_expression_and_expect_literal(&left, scope)?;
                         let right = self.execute_expression_and_expect_literal(&right, scope)?;
 
-                        Some(Value::Literal(Literal::Boolean(left != right)))
+                        Ok(Some(Value::Literal(Literal::Boolean(left != right))))
                     }
                     Operator::OperatorGreaterThan(left, right) => {
                         match self.execute_expression_and_expect_literal(&left, scope)? {
                             Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::BigInt(r) => Some(Value::Literal(Literal::Boolean(l > r))),
+                                Literal::BigInt(r) => Ok(Some(Value::Literal(Literal::Boolean(l > r)))),
                                 _ => panic!("expected two bigInts!")
                             }
                             Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::Number(r) => Some(Value::Literal(Literal::Boolean(l > r))),
+                                Literal::Number(r) => Ok(Some(Value::Literal(Literal::Boolean(l > r)))),
                                 _ => panic!("expected two numbers!")
                             },
                             _ => panic!("Expected number or bigint")
@@ -922,11 +914,11 @@ impl Interpreter {
                     Operator::OperatorGreaterOrEqual(left, right) => {
                         match self.execute_expression_and_expect_literal(&left, scope)? {
                             Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::BigInt(r) => Some(Value::Literal(Literal::Boolean(l >= r))),
+                                Literal::BigInt(r) => Ok(Some(Value::Literal(Literal::Boolean(l >= r)))),
                                 _ => panic!("expected two bigInts!")
                             }
                             Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::Number(r) => Some(Value::Literal(Literal::Boolean(l >= r))),
+                                Literal::Number(r) => Ok(Some(Value::Literal(Literal::Boolean(l >= r)))),
                                 _ => panic!("expected two numbers!")
                             },
                             _ => panic!("Expected number or bigint")
@@ -935,11 +927,11 @@ impl Interpreter {
                     Operator::OperatorLessThan(left, right) => {
                         match self.execute_expression_and_expect_literal(&left, scope)? {
                             Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::BigInt(r) => Some(Value::Literal(Literal::Boolean(l < r))),
+                                Literal::BigInt(r) => Ok(Some(Value::Literal(Literal::Boolean(l < r)))),
                                 _ => panic!("expected two bigInts!")
                             }
                             Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::Number(r) => Some(Value::Literal(Literal::Boolean(l < r))),
+                                Literal::Number(r) => Ok(Some(Value::Literal(Literal::Boolean(l < r)))),
                                 _ => panic!("expected two numbers!")
                             },
                             _ => panic!("Expected number or bigint")
@@ -948,11 +940,11 @@ impl Interpreter {
                     Operator::OperatorLessOrEqual(left, right) => {
                         match self.execute_expression_and_expect_literal(&left, scope)? {
                             Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::BigInt(r) => Some(Value::Literal(Literal::Boolean(l <= r))),
+                                Literal::BigInt(r) => Ok(Some(Value::Literal(Literal::Boolean(l <= r)))),
                                 _ => panic!("expected two bigInts!")
                             }
                             Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::Number(r) => Some(Value::Literal(Literal::Boolean(l <= r))),
+                                Literal::Number(r) => Ok(Some(Value::Literal(Literal::Boolean(l <= r)))),
                                 _ => panic!("expected two numbers!")
                             },
                             _ => panic!("Expected number or bigint")
@@ -961,11 +953,11 @@ impl Interpreter {
                     Operator::OperatorModulo(left, right) => {
                         match self.execute_expression_and_expect_literal(&left, scope)? {
                             Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::BigInt(r) => Some(Value::Literal(Literal::BigInt(l % r))),
+                                Literal::BigInt(r) => Ok(Some(Value::Literal(Literal::BigInt(l % r)))),
                                 _ => panic!("expected two bigInts!")
                             }
                             Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::Number(r) => Some(Value::Literal(Literal::Number(l % r))),
+                                Literal::Number(r) => Ok(Some(Value::Literal(Literal::Number(l % r)))),
                                 _ => panic!("expected two numbers!")
                             },
                             _ => panic!("Expected number or bigint")
@@ -974,11 +966,11 @@ impl Interpreter {
                     Operator::OperatorBitwiseLeft(left, right) => {
                         match self.execute_expression_and_expect_literal(&left, scope)? {
                             Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::BigInt(r) => Some(Value::Literal(Literal::BigInt(/*l << r*/ BigInt::zero()))), //TODO
+                                Literal::BigInt(r) => Ok(Some(Value::Literal(Literal::BigInt(/*l << r*/ BigInt::zero())))), //TODO
                                 _ => panic!("expected two bigInts!")
                             }
                             Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::Number(r) => Some(Value::Literal(Literal::Number(l << r))),
+                                Literal::Number(r) => Ok(Some(Value::Literal(Literal::Number(l << r)))),
                                 _ => panic!("expected two numbers!")
                             },
                             _ => panic!("Expected number or bigint")
@@ -987,11 +979,11 @@ impl Interpreter {
                     Operator::OperatorBitwiseRight(left, right) => {
                         match self.execute_expression_and_expect_literal(&left, scope)? {
                             Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::BigInt(r) => Some(Value::Literal(Literal::BigInt(/*l >> r*/ BigInt::zero()))), //TODO
+                                Literal::BigInt(r) => Ok(Some(Value::Literal(Literal::BigInt(/*l >> r*/ BigInt::zero())))), //TODO
                                 _ => panic!("expected two bigInts!")
                             }
                             Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::Number(r) => Some(Value::Literal(Literal::Number(l >> r))),
+                                Literal::Number(r) => Ok(Some(Value::Literal(Literal::Number(l >> r)))),
                                 _ => panic!("expected two numbers!")
                             },
                             _ => panic!("Expected number or bigint")
@@ -1000,11 +992,11 @@ impl Interpreter {
                     Operator::OperatorMultiply(left, right) => {
                         match self.execute_expression_and_expect_literal(&left, scope)? {
                             Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::BigInt(r) => Some(Value::Literal(Literal::BigInt(l * r))),
+                                Literal::BigInt(r) => Ok(Some(Value::Literal(Literal::BigInt(l * r)))),
                                 _ => panic!("expected two bigInts!")
                             }
                             Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::Number(r) => Some(Value::Literal(Literal::Number(l * r))),
+                                Literal::Number(r) => Ok(Some(Value::Literal(Literal::Number(l * r)))),
                                 _ => panic!("expected two numbers!")
                             },
                             _ => panic!("Expected number or bigint")
@@ -1013,11 +1005,11 @@ impl Interpreter {
                     Operator::OperatorDivide(left, right) => {
                         match self.execute_expression_and_expect_literal(&left, scope)? {
                             Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::BigInt(r) => Some(Value::Literal(Literal::BigInt(l / r))),
+                                Literal::BigInt(r) => Ok(Some(Value::Literal(Literal::BigInt(l / r)))),
                                 _ => panic!("expected two bigInts!")
                             }
                             Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::Number(r) => Some(Value::Literal(Literal::Number(l / r))),
+                                Literal::Number(r) => Ok(Some(Value::Literal(Literal::Number(l / r)))),
                                 _ => panic!("expected two numbers!")
                             },
                             _ => panic!("Expected number or bigint")
@@ -1030,49 +1022,49 @@ impl Interpreter {
                         match left {
                             Literal::Number(left_val) => match right {
                                 Literal::Number(val) => {
-                                    Some(Value::Literal(Literal::Number(left_val + val)))
+                                    Ok(Some(Value::Literal(Literal::Number(left_val + val))))
                                 }
-                                Literal::String(val) => Some(Value::Literal(Literal::String(
+                                Literal::String(val) => Ok(Some(Value::Literal(Literal::String(
                                     format!("{}{}", left_val, val),
-                                ))),
+                                )))),
                                 _ => panic!("Error! Invalid type for this operator"),
                             },
                             Literal::String(left_val) => match right {
                                 Literal::String(val) => {
-                                    Some(Value::Literal(Literal::String(left_val + &val)))
+                                    Ok(Some(Value::Literal(Literal::String(left_val + &val))))
                                 }
-                                Literal::Number(val) => Some(Value::Literal(Literal::String(
+                                Literal::Number(val) => Ok(Some(Value::Literal(Literal::String(
                                     format!("{}{}", left_val, val),
-                                ))),
-                                Literal::Boolean(val) => Some(Value::Literal(Literal::String(
+                                )))),
+                                Literal::Boolean(val) => Ok(Some(Value::Literal(Literal::String(
                                     format!("{}{}", left_val, val),
-                                ))),
-                                Literal::BigInt(val) => Some(Value::Literal(Literal::String(
+                                )))),
+                                Literal::BigInt(val) => Ok(Some(Value::Literal(Literal::String(
                                     format!("{}{}", left_val, val)
-                                ))),
+                                )))),
                                 Literal::Map(_) => panic!("Can't do operations on Map!"),
-                                Literal::Null => Some(Value::Literal(Literal::String(format!(
+                                Literal::Null => Ok(Some(Value::Literal(Literal::String(format!(
                                     "{}{}",
                                     left_val, "null"
-                                )))),
+                                ))))),
                             },
                             Literal::Null => match right {
-                                Literal::String(val) => Some(Value::Literal(Literal::String(
+                                Literal::String(val) => Ok(Some(Value::Literal(Literal::String(
                                     format!("{}{}", "null", val),
-                                ))),
+                                )))),
                                 _ => panic!("Error, only string is authorized on null"),
                             },
                             Literal::BigInt(left_val) => match right {
-                                Literal::BigInt(val) => Some(Value::Literal(Literal::BigInt(
+                                Literal::BigInt(val) => Ok(Some(Value::Literal(Literal::BigInt(
                                     left_val + val
-                                ))),
+                                )))),
                                 _ => panic!("Only BigInt authorized")
                             }
                             Literal::Map(_) => panic!("Can't do operations on Map!"),
                             Literal::Boolean(b) => match right {
-                                Literal::String(s) => Some(Value::Literal(Literal::String(
+                                Literal::String(s) => Ok(Some(Value::Literal(Literal::String(
                                     format!("{}{}", b, s)
-                                ))),
+                                )))),
                                 _ => panic!("Error! Invalid type for + operator")
                             }
                         }
@@ -1080,11 +1072,11 @@ impl Interpreter {
                     Operator::OperatorMinus(left, right) => {
                         match self.execute_expression_and_expect_literal(&left, scope)? {
                             Literal::BigInt(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::BigInt(r) => Some(Value::Literal(Literal::BigInt(l - r))),
+                                Literal::BigInt(r) => Ok(Some(Value::Literal(Literal::BigInt(l - r)))),
                                 _ => panic!("expected two bigInts!")
                             }
                             Literal::Number(l) => match self.execute_expression_and_expect_literal(right, scope)? {
-                                Literal::Number(r) => Some(Value::Literal(Literal::Number(l - r))),
+                                Literal::Number(r) => Ok(Some(Value::Literal(Literal::Number(l - r)))),
                                 _ => panic!("expected two numbers!")
                             },
                             _ => panic!("Expected number or bigint")

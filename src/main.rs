@@ -32,7 +32,10 @@ fn build_program(path: &String) -> Program {
 fn main() {
     let program = build_program(&"examples/map.xel".into());
     println!("{}", serde_json::to_string_pretty(&program).unwrap());
-    let interpreter = Interpreter::new(program, Environment::default(), load_library);
+    let interpreter = match Interpreter::new(program, Environment::default(), load_library) {
+        Ok(v) => v,
+        Err(e) => panic!("an error has occured")
+    };
     for func in vec![
         "main",
         /*"lib_test",
@@ -51,7 +54,10 @@ fn main() {
         println!("executing entrypoint: {}", func);
         println!(
             "Value returned {}",
-            interpreter.run_function(func.to_string(), vec![]).unwrap()
+            match interpreter.run_function(func.to_string(), vec![]) {
+                Ok(v) => v.unwrap(),
+                Err(e) => panic!("an error has occured while calling this function")
+            }
         );
         println!("-------------------");
     }
